@@ -94,6 +94,15 @@ def create_graph(prob, num, disch, hrs):
   out_path = config.get("Graphs","out_path")
   out_pref = config.get("Graphs", "out_pref")
 
+  # Make sure target directory exists
+  try:
+    os.makedirs(out_path)
+  except OSError:
+    if os.path.exists(out_path):
+      pass
+    else:
+      raise
+    
   print "Creating graph for station num: "+str(num)
   fig = plt.figure()
   plt.xlabel('Hours')
