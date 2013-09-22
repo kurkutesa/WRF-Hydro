@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os, csv, sys
 import psycopg2
+import ConfigParser
 
 
 def probability_period(max, prob_array):
@@ -55,8 +56,15 @@ def hydrometer_probs():
 	Returns an array
 
   """
+  # First get configurations
+  config = ConfigParser.ConfigParser()
+  config.read("hydrographs.conf")
+  h = config.get("Db","host")
+  db = config.get("Db","dbname")
+  u = config.get("Db","user")
+  pw = config.get("Db","password")
 
-  conn_string = "host='maps.arava.co.il' dbname='ihs' user='ihsdba' password='grby~2013'"
+  conn_string = "host='"+h+"' dbname='"+db+"' user='"+u+"' password='"+pw+"'"
   try:
     conn = psycopg2.connect(conn_string)
     curs = conn.cursor()
@@ -80,6 +88,12 @@ def create_graph(prob, num, disch, hrs):
   First the function
 
   """
+  # First get configurations
+  config = ConfigParser.ConfigParser()
+  config.read("hydrographs.conf")
+  out_path = config.get("Graphs","out_path")
+  out_pref = config.get("Graphs", "out_pref")
+
   print "Creating graph for station num: "+str(num)
   fig = plt.figure()
   plt.xlabel('Hours')
@@ -90,7 +104,7 @@ def create_graph(prob, num, disch, hrs):
   plt.title(prob_str,size=14)
   ln = plt.plot(hrs, disch)
   plt.setp(ln, linewidth=2, color='b')
-  outpng=os.path.join('graphs',"hg_"+ stnum + ".png")
+  outpng=os.path.join(out_path,out_pref + stnum + ".png")
   plt.savefig(outpng)
 
 
@@ -112,12 +126,24 @@ def main():
 
   input_file = sys.argv[1]
 
-  # First get the probabilty parameters for all hydro_stations
+  # First get configurations
+  config = ConfigParser.ConfigParser()
+  config.read("hydrographs.conf")
+  max_id = config.getint("General","max_id")
+  min_hr = config.getint("General", "min_hr")
+  max_hr = config.getint("General","max_hr")
+  hr_col = config.getint("General", "hr_col")
+  disch_col = config.getint("General", "disch_col")
+
+  # Now get the probability parameters for all hydro_stations
   probs_array = hydrometer_probs()
   
+
+
   with open(input_file, 'rb') as f:
     data_rows = csv.reader(f, delimiter='\t', quoting=csv.QUOTE_NONE)
-    for i in range(0,120,1):
+    # config parameters:
+    for i in range(0,max_id,1):
       print "Working on station id: "+str(i)
       datai = []
       for row in data_rows:
@@ -132,15 +158,17 @@ def main():
       max_disch=0
       if (len(datai) == 0):
         exit
-      else:  
+      else:
         for j in range(len(datai)):
           #	hr = datai[j][2].split(':')[0]
-          hr = int(datai[j][0])/3600
-          # Limit graph from hour 6:00 to hour 48
-          if (hr>6 and hr<=48):
+          # Get hour and discharge column from config
+          hr = int(datai[j][hr_col])/3600
+
+          # Limit graph from minimum hour (from config) to max hour 
+          if (hr>min_hr and hr<=max_hr):
             hrs.append(hr)
-	          # The sixth column has the discharge in cubic meters
-            dis = round(float(datai[j][6]))
+	          # Get column has the discharge in cubic meters
+            dis = round(float(datai[j][disch_col]))
             disch.append(dis)
             # Keep track of the maximum discharge for this hydro station
             if dis>max_disch:
