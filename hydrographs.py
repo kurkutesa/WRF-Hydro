@@ -172,7 +172,7 @@ def create_graph(prob, num, disch, hrs):
   print "Creating graph for station num: "+str(num)
   fig = plt.figure()
   plt.xlabel('Hours')
-  plt.ylabel('Discharge (m3/hr)')
+  plt.ylabel('Discharge (m3/sec)')
   stnum=str(num)
   plt.suptitle('Station Number: '+ stnum, fontsize=18)
   prob_str="Return period: "+prob
