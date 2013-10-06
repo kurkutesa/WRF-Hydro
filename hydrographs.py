@@ -321,7 +321,7 @@ def parse_frxst(dirname):
 	return data_rows
 
 
-def db_update(data_rows):
+def upload_flow_data(data_rows):
 	"""
 	Creates a database connection,
 	inserts all rows from the data_rows array
@@ -337,20 +337,19 @@ def db_update(data_rows):
 	try:
 		conn = psycopg2.connect(conn_string)
 		curs = conn.cursor()
-		for row in data_rows:
+    for row in data_rows:
 			dt = row[1]+" "+row[2]
 			id = row[3]
 			mf = row[4]
 			sql = "INSERT INTO predicted_flow_data (pred_timestamp, station_id, max_flow) VALUES (%s, %s, %s)" % (dt, id, mf) 
 			curs.execute(sql)
 
-  	curs.commit()
-
-		except psycopg2.DatabaseError, e:
-			print 'Error %s' % e
-			sys.exit(1)
-		finally:
-			if conn:
+    curs.commit()
+  except psycopg2.DatabaseError, e:
+    print 'Error %s' % e
+    sys.exit(1)
+  finally:
+		if conn:
 			conn.close()
 
 
@@ -372,9 +371,16 @@ def main():
 	else:	
 		print "Using data directory: "+datadir
 		data_rows = parse_frxst(datadir)
-		print "Data file contains: "+str(len(data_rows))+" rows"
-		do_loop(data_rows)
+    if (len(data_rows)>1):
+    # we have data, go ahead
+  		print "Data file contains: "+str(len(data_rows))+" rows"
+	  	do_loop(data_rows)
+      # INSERT to the database
+      upload_flow_data(data_rows)
+    else:
+      print "No rows in data file!"
 
+  # end of main()
 
 if __name__ == "__main__":
 
