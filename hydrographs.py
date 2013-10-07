@@ -1,48 +1,47 @@
 #!/usr/bin/env python
 """
-	This routine reads a CSV file of flow rates for each of the hydrometer stations
-	with hourly data for a period of 24 hours.
-	All discharge values are entered into an array for each hydrostation
-	The array of discharge values is used build a hydrometric graph for each station
-	Graphs are output to png files, one for each station
+This routine reads a CSV file of flow rates for each of the hydrometer stations
+with hourly data for a period of 24 hours.
+All discharge values are entered into an array for each hydrostation
+The array of discharge values is used build a hydrometric graph for each station
+Graphs are output to png files, one for each station
 """
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import os, csv, sys, errno
 import psycopg2
-import ConfigParser
+import ConfigParser, logging
 
 
 def probability_period(l):
-	"""
-	Check which level a hydro station is in, and return a string 
-	to put into the graph title
-	
-	"""
-	prob_reply=""
+  """
+  Check which level a hydro station is in, and return a string 
+  to put into the graph title
+  """
+  prob_reply=""
+  if ((l is None) | (l == -1)):
+    prob_reply=" (No probability data)"
+  elif l==0:
+    prob_reply=" No flow"
+  elif l==1:
+    prob_reply=" less than 2 years"
+  elif l==2:
+    prob_reply=" 2 to 5 years"
+  elif l==3:
+    prob_reply=" 5 to 10 years"
+  elif l==4:
+    prob_reply=" 10 to 25 years"
+  elif l==5:
+    prob_reply=" 25 to 50 years"
+  elif l==6:
+    prob_reply=" 50 to 100 years"
+  else :
+    prob_reply=" greater than 100 years"
 
-	if ((l is None) | (l == -1)):
-		prob_reply=" (No probability data)"
-	elif l==0:
-		prob_reply=" No flow"
-	elif l==1:
-		prob_reply=" less than 2 years"
-	elif l==2:
-		prob_reply=" 2 to 5 years"
-	elif l==3:
-		prob_reply=" 5 to 10 years"
-	elif l==4:
-		prob_reply=" 10 to 25 years"
-	elif l==5:
-		prob_reply=" 25 to 50 years"
-	elif l==6:
-		prob_reply=" 50 to 100 years"
-	else :
-		prob_reply=" greater than 100 years"
-
-	return prob_reply
+  return prob_reply
 
 
 def get_stationid_list():
@@ -65,7 +64,7 @@ def get_stationid_list():
 		rows = curs.fetchall()
 		return rows
 	except psycopg2.DatabaseError, e:
-		print 'Error %s' % e		
+		logging.error('Error %s',  e)		
 		sys.exit(1)			
 	finally:
 		if conn:
@@ -95,8 +94,9 @@ def get_station_num(id):
 			return None
 		else:
 			return row[0]
+
 	except psycopg2.DatabaseError, e:
-		print 'Error %s' % e		
+		logging.error('Error %s', e)		
 		sys.exit(1)			
 	finally:
 		if conn:
@@ -105,46 +105,50 @@ def get_station_num(id):
 
 
 def update_maxflow(id, mf):
-	"""
-	Update the database table "max_flows" with the maximum flow
-	for a station id (passed as parameters)
-	Requery to get the flow level value (set by a trigger)
-	"""
-	# First get configurations
-	global host
-	global dbname
-	global user
-	global password
+  """
+  Update the database table "max_flows" with the maximum flow
+  for a station id (passed as parameters)
+  Requery to get the flow level value (set by a trigger)
+  """
+  # First get configurations
+  global host
+  global dbname
+  global user
+  global password
 
-	conn_string = "host='"+host+"' dbname='"+dbname+"' user='"+user+"' password='"+password+"'"
-	try:
-		conn = psycopg2.connect(conn_string)
-		curs = conn.cursor()
-		sql = "UPDATE max_flows SET max_flow=%s WHERE id=%s;" % (mf, id)
-		#print "Executing: "+sql
-		curs.execute(sql)
-		conn.commit()
-	except psycopg2.DatabaseError, e:
-		print 'Error %s' %e
-		sys.exit(1)
+  conn_string = "host='"+host+"' dbname='"+dbname+"' user='"+user+"' password='"+password+"'"
+  try:
+    conn = psycopg2.connect(conn_string)
+    curs = conn.cursor()
+    sql = "UPDATE max_flows SET max_flow=%s WHERE id=%s;"
+    data = (mf, id)
+    #logging.debug("Executing: "+sql+data)
+    curs.execute(sql, data)
+    conn.commit()
+  except psycopg2.DatabaseError, e:
+    logging.error('Error %s',e)
+    sys.exit(1)
 
-	# After update the flow level has been set in the db table (by a trigger)
-	# Query for and return the flow level value
-	try:
-		curs.execute("SELECT flow_level FROM max_flows WHERE id = %s" % id)
-		row = curs.fetchone()
-		cnt = curs.rowcount
-		if (cnt == 1):
-			l = row[0]
-		else:
-			l = None
-	except psycopg2.DatabaseError,e:
-		print 'Error %s' % e
-	finally:
-		if conn:
-			conn.close()
+  # After update the flow level has been set in the db table (by a trigger)
+  # Query for and return the flow level value
+  try:
+    sql = "SELECT flow_level FROM max_flows WHERE id = %s"
+    data = (id,)
+    curs.execute(sql, data)
+    row = curs.fetchone()
+    cnt = curs.rowcount
+    if (cnt == 1):
+      l = row[0]
+    else:
+      l = None
+  
+  except psycopg2.DatabaseError,e:
+    logging.error('Error %s', e)
+  finally:
+    if conn:
+      conn.close()
 	
-	return l
+  return l
 
 
 
@@ -163,7 +167,7 @@ def create_graph(prob, num, disch, hrs, dt):
 		else:
 			raise
 		
-	print "Creating graph for station num: "+str(num)
+	logging.info("Creating graph for station num: %s",str(num))
 	fig = plt.figure()
 	plt.xlabel('Hours')
 	plt.ylabel('Discharge (m3/sec)')
@@ -190,7 +194,7 @@ def do_loop(data_rows):
 			
 	for i in range(0,len(ids)):
 		id = ids[i][0]
-		print "Working on station id: "+str(id)
+		logging.info("Working on station id: %s",str(id))
 		datai = []
 		for row in data_rows:
 		# THe third column (numbered from 0) has the station id
@@ -207,7 +211,7 @@ def do_loop(data_rows):
 		else:
 			# Grab the date for use later in the graph (needed only once)
 			date_str = datai[1][1]
-			print "Data for date: "+date_str
+			#logging.debug("Data for date: ",date_str)
 
 			for j in range(len(datai)):
 			#	hr = datai[j][2].split(':')[0]
@@ -227,15 +231,15 @@ def do_loop(data_rows):
 		# and get back the flow_level for this station
 			level = update_maxflow(int(id), int(max_disch))
 
-			print "Using: "+str(len(hrs))+" data points."
- 		#	print "Hour: " + str(hr) + "Disch: " + str(dis)
+		#	logging.debug( "Using: %s", str(len(hrs)), " data points.")
+ 		#	logging.debug( "Hour: %s", str(hr),  "Disch: %s", str(dis))
 		# Continue ONLY if level actually has value
 			if (level is None):
-				print "No station with id: "+str(id)
+				logging.warning( "No station with id: %s",str(id))
 				exit
 			else:
 				station_num = get_station_num(int(id))
-				print "Station num: "+str(station_num)+" has max discharge: "+str(max_disch)
+				#logging.debug( "Station num: %s", str(station_num), " has max discharge: %s", str(max_disch))
 				# Find which return period this max flow is in
 				prob_str = probability_period(level) 
 				# Create the graph
@@ -243,163 +247,178 @@ def do_loop(data_rows):
 
 
 def get_latest_datadir():
-	"""
-	Scans the output directory to get timestamps of each
-	Finds the directory with a timestamp newer than the timestamp
-	stored in the "latest" file
-	Returns the newer data directory
-	"""
-	global in_path
-	global ts_file
-	global data_file
+  """
+  Scans the output directory to get timestamps of each
+  Finds the directory with a timestamp newer than the timestamp
+  stored in the "latest" file
+  Returns the newer data directory
+  """
+  global in_path
+  global ts_file
+  global data_file
 
-	# First read existing timestamp from last timestamp file
-	try:
-		f = open(ts_file,"r+")
-		last_ts = float(f.readline())
+  # First read existing timestamp from last timestamp file
+  try:
+    f = open(ts_file,"r+")
+    last_ts = float(f.readline())
 
-	except IOError as e:
-		# Can't get a value from the last timesatmp file. Assume 0
-		print "Can't access timestamp file: "+e.strerror
-		last_ts = 0
+  except IOError as e:
+  # Can't get a value from the last timesatmp file. Assume 0
+    logging.error( "Can't access timestamp file: %s", e.strerror)
+    last_ts = 0
+    f = open(ts_file, "w")
 
-	new_ts = None
-	new_data_dir = None
+  new_ts = None
+  new_data_dir = None
+  for d in os.listdir(in_path):
+    if os.path.isdir(os.path.join(".",d)):
+      try:
+        ts = os.path.getmtime(os.path.join(in_path,d,data_file))
+        # Compare timestamp for each frxst file in each subdir 
+        # with the value from the last timestamp file
+        if ts > last_ts:
+          new_ts = ts
+          new_data_dir = d
+    
+      except OSError as e:
+        logging.warning("Data file in subdir: %s not yet available. %s", d, e.strerror)
 
-	for d in os.listdir(in_path):
-		try:
-			ts = os.path.getmtime(os.path.join(in_path,d,data_file))
-			# Compare timestamp for each frxst file in each subdir 
-			# with the value from the last timestamp file
-			if ts > last_ts:
-				new_ts = ts
-				new_data_dir = d
-		except OSError as e:
-			print "Data file in subdir: "+d+" not yet available." + e.strerror
+  # If there is no newer frxst file, return None
+  # otherwise return the subdir of the new data
+  # and write out the new timestamp to the last timestamp file (for next time)
+  if new_ts is None:
+    f.close()
+    return None
 
-	# If there is no newer frxst file, return None
-	# otherwise return the subdir of the new data
-	# and write out the new timestamp to the last timestamp file (for next time)
-	if new_ts is None:
-		f.close()
-		return None
-
-	else:
-		f.seek(0)
-		f.write(str(new_ts))
-		f.truncate()
-		f.close()
-		return new_data_dir
+  else:
+    f.seek(0)
+    f.write(str(new_ts))
+    f.truncate()
+    f.close()
+    logging.info("Using data directory: %s", new_data_dir)
+    
+  return new_data_dir
 
 
 
 def parse_frxst(dirname):
-	"""
-	Scan the input data file, and get all rows into a list of lists
-	Return the list
-	"""
-	global in_path
-	global data_file
-	input_file = os.path.join(in_path, dirname, data_file)
-	data_rows=[]
-	try:
-		f = open(input_file, 'rb')
-		for line in f.readlines():
-			secs, dt, hr, id, disch = int(line[0:8]), line[9:19], line[20:28], int(line[32:36]), round(float(line[62:66]),1)
-			atuple=(secs,dt,hr,id,disch)
-			data_rows.append(atuple)
+  """
+  Scan the input data file, and get all rows into a list of lists
+  Return the list
+  """
+  global in_path
+  global data_file
 
-	except IOError as e:
-		if e.errno == errno.EACCES:
-			print "Data file not accessible: "+e.strerror
-		else:
-			print "Data file not available: "+e.strerror
-		raise
-		return None
+  input_file = os.path.join(in_path, dirname, data_file)
+  data_rows=[]
+  try:
+    f = open(input_file, 'rb')
+    for line in f.readlines():
+      secs, dt, hr, id, disch = int(line[0:8]), line[9:19], line[20:28], int(line[32:36]), round(float(line[61:66]),1)
+      atuple=(secs,dt,hr,id,disch)
+      data_rows.append(atuple)
+    
+    if (len(data_rows) > 1):
+      logging.info("Data file contains %s rows", str(len(data_rows)))
+    else:
+      logging.error("No rows in data file!")
+      sys.exit()
 
-	f.close
-	return data_rows
+  except IOError as e:
+    if e.errno == errno.EACCES:
+      logging.error("Data file not accessible: %s",e.strerror)
+    else:
+      logging.error("Data file not available: %s",e.strerror)
+    raise
+    return None
+
+  f.close
+  return data_rows
 
 
 def upload_flow_data(data_rows):
-	"""
-	Creates a database connection,
-	inserts all rows from the data_rows array
-	into the db table predicted_flow_data
-	"""
+  """
+  Creates a database connection,
+  inserts all rows from the data_rows array
+  into the db table predicted_flow_data
+  """
   # First get configurations
-	global host
-	global dbname
-	global user
-	global password
+  global host
+  global dbname
+  global user
+  global password
 
-	conn_string = "host='"+host+"' dbname='"+dbname+"' user='"+user+"' password='"+password+"'"
-	try:
-		conn = psycopg2.connect(conn_string)
-		curs = conn.cursor()
+  conn_string = "host='"+host+"' dbname='"+dbname+"' user='"+user+"' password='"+password+"'"
+  try:
+    conn = psycopg2.connect(conn_string)
+    curs = conn.cursor()
     for row in data_rows:
-			dt = row[1]+" "+row[2]
-			id = row[3]
-			mf = row[4]
-			sql = "INSERT INTO predicted_flow_data (pred_timestamp, station_id, max_flow) VALUES (%s, %s, %s)" % (dt, id, mf) 
-			curs.execute(sql)
+      dt = row[1]+" "+row[2]
+      id = row[3]
+      mf = row[4]
+      data = (dt, id, mf)
+      sql = "INSERT INTO predicted_flow_data (pred_timestamp, id, max_flow) VALUES (%s, %s, %s)"
+      curs.execute(sql,data)
 
-    curs.commit()
+    conn.commit()
+    logging.info("Database upload completed")
+
   except psycopg2.DatabaseError, e:
-    print 'Error %s' % e
+    logging.error('Error %s', e)
     sys.exit(1)
   finally:
-		if conn:
-			conn.close()
+    if conn:
+      conn.close()
 
 
 
 def main():
-	"""
-	Loops thru a number of index values,retrieved from a db query, reads rows 
-	from the csv file passed on the command line
-	Each row contains data for a certain station at a certain time
-	The loop aggregates the data, and creates a discharge array for each station
-	Then 2 subroutines are called:
-	- first to get the probability string for the max flow of each station for this event
-	- second to create a hydrograph for this station
-
-	"""
-	datadir = get_latest_datadir()
-	if datadir is None:
-		exit
-	else:	
-		print "Using data directory: "+datadir
-		data_rows = parse_frxst(datadir)
-    if (len(data_rows)>1):
-    # we have data, go ahead
-  		print "Data file contains: "+str(len(data_rows))+" rows"
-	  	do_loop(data_rows)
-      # INSERT to the database
-      upload_flow_data(data_rows)
+  """
+  Loops thru a number of index values,retrieved from a db query, reads rows 
+  from the csv file passed on the command line
+  Each row contains data for a certain station at a certain time
+  The loop aggregates the data, and creates a discharge array for each station
+  Then 2 subroutines are called:
+  - first to get the probability string for the max flow of each station for this event
+  - second to create a hydrograph for this station
+  """
+  datadir = get_latest_datadir()
+  if datadir is None:
+    exit
+  else:	
+    data_rows = parse_frxst(datadir)
+    if (data_rows is None):
+      sys.exit()
     else:
-      print "No rows in data file!"
+    # we have data, go ahead
+      do_loop(data_rows)
+    # INSERT to the database
+      upload_flow_data(data_rows)
 
   # end of main()
 
+
 if __name__ == "__main__":
 
-	# First get configurations
-	config = ConfigParser.ConfigParser()
-	config.read("hydrographs.conf")
-	min_hr = config.getint("General", "min_hr")
-	max_hr = config.getint("General","max_hr")
-	hr_col = config.getint("General", "hr_col")
-	in_path = config.get("General", "in_path")
-	disch_col = config.getint("General", "disch_col")
-	ts_file = config.get("General", "timestamp_file")
-	data_file = config.get("General", "disch_data_file")
-	out_path = config.get("Graphs","out_path")
-	out_pref = config.get("Graphs", "out_pref")
-	host = config.get("Db","host")
-	dbname = config.get("Db","dbname")
-	user = config.get("Db","user")
-	password = config.get("Db","password")
-
-	# Now begin work
-	main()
+  # First get configurations
+  config = ConfigParser.ConfigParser()
+  config.read("hydrographs.conf")
+  min_hr = config.getint("General", "min_hr")
+  max_hr = config.getint("General","max_hr")
+  hr_col = config.getint("General", "hr_col")
+  in_path = config.get("General", "in_path")
+  disch_col = config.getint("General", "disch_col")
+  ts_file = config.get("General", "timestamp_file")
+  data_file = config.get("General", "disch_data_file")
+  log_file = config.get("General", "logfile")
+  out_path = config.get("Graphs","out_path")
+  out_pref = config.get("Graphs", "out_pref")
+  host = config.get("Db","host")
+  dbname = config.get("Db","dbname")
+  user = config.get("Db","user")
+  password = config.get("Db","password")
+  # Set up logging
+  frmt='%(asctime)s %(levelname)-8s %(message)s'
+  logging.basicConfig(level=logging.DEBUG, format=frmt, filename=log_file, filemode='a')
+  # Now begin work
+  main()
