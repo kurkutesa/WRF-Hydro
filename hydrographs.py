@@ -109,6 +109,7 @@ def update_maxflow(id, mf):
   Update the database table "max_flows" with the maximum flow
   for a station id (passed as parameters)
   Requery to get the flow level value (set by a trigger)
+	Return the flow level value
   """
   # First get configurations
   global host
@@ -177,8 +178,15 @@ def create_graph(prob, num, disch, hrs, dt):
 	plt.title(prob_str,size=14)
 	plt.figtext(0.13, 0.87, "Initialized: "+dt, size="medium", weight="bold", backgroundcolor="#EDEA95")
 	ln = plt.plot(hrs, disch)
-	plt.ylim(ymin=0)
-	plt.setp(ln, linewidth=2, color='b')
+	# Get max discharge to size the graph
+	dis_max = max(disch)
+	if dis_max <= 10:
+		y_max = 10
+	else:
+		y_max = 1.05*dis_max
+	
+	plt.ylim(ymin=0, ymax=y_max)
+	plt.setp(ln, linewidth=3, color='b')
 	outpng=os.path.join(out_path,out_pref + stnum + ".png")
 	plt.savefig(outpng)
 
@@ -214,14 +222,13 @@ def do_loop(data_rows):
 			#logging.debug("Data for date: ",date_str)
 
 			for j in range(len(datai)):
-			#	hr = datai[j][2].split(':')[0]
 			# Get hour and discharge column from config
 				hr = int(datai[j][hr_col])/3600
 			# Limit graph from minimum hour (from config) to max hour 
 				if (hr>min_hr and hr<=max_hr):
 					hrs.append(hr)
 				 # Get "disch_col" column: has the discharge in cubic meters
-					dis = round(float(datai[j][disch_col]))
+					dis = float(datai[j][disch_col])
 					disch.append(dis)
 					# Keep track of the maximum discharge for this hydro station
 					if dis>max_disch:
@@ -229,7 +236,7 @@ def do_loop(data_rows):
 
 		# Now use the max_disch to update the maxflows database table
 		# and get back the flow_level for this station
-			level = update_maxflow(int(id), int(max_disch))
+			level = update_maxflow(int(id), max_disch)
 
 		#	logging.debug( "Using: %s", str(len(hrs)), " data points.")
  		#	logging.debug( "Hour: %s", str(hr),  "Disch: %s", str(dis))
@@ -250,7 +257,7 @@ def get_latest_datadir():
   """
   Scans the output directory to get timestamps of each
   Finds the directory with a timestamp newer than the timestamp
-  stored in the "latest" file
+  stored in the "last_timestamp" file
   Returns the newer data directory
   """
   global in_path
@@ -264,31 +271,33 @@ def get_latest_datadir():
 
   except IOError as e:
   # Can't get a value from the last timesatmp file. Assume 0
-    logging.error( "Can't access timestamp file: %s", e.strerror)
+    logging.warning( "Can't access timestamp file: %s", e.strerror)
     last_ts = 0
     f = open(ts_file, "w")
 
   new_ts = None
   new_data_dir = None
   for d in os.listdir(in_path):
-    if os.path.isdir(os.path.join(".",d)):
-      try:
-        ts = os.path.getmtime(os.path.join(in_path,d,data_file))
+    if os.path.isdir(os.path.join(in_path,d)):
+			logging.debug("Trying path: %s", os.path.join(in_path,d))
+			try:
+				ts = os.path.getmtime(os.path.join(in_path,d,data_file))
         # Compare timestamp for each frxst file in each subdir 
         # with the value from the last timestamp file
-        if ts > last_ts:
-          new_ts = ts
-          new_data_dir = d
+				if ts > last_ts:
+					new_ts = ts
+					new_data_dir = d
     
-      except OSError as e:
-        logging.warning("Data file in subdir: %s not yet available. %s", d, e.strerror)
+			except OSError as e:
+				logging.warning("Data file in subdir: %s not yet available. %s", d, e.strerror)
 
   # If there is no newer frxst file, return None
   # otherwise return the subdir of the new data
   # and write out the new timestamp to the last timestamp file (for next time)
   if new_ts is None:
-    f.close()
-    return None
+		logging.info("No new data file")
+		f.close()
+		return None
 
   else:
     f.seek(0)
@@ -314,7 +323,8 @@ def parse_frxst(dirname):
   try:
     f = open(input_file, 'rb')
     for line in f.readlines():
-      secs, dt, hr, id, disch = int(line[0:8]), line[9:19], line[20:28], int(line[32:36]), round(float(line[61:66]),1)
+			# Force discharge to a float
+      secs, dt, hr, id, disch = int(line[0:8]), line[9:19], line[20:28], int(line[32:36]), float(line[59:66])
       atuple=(secs,dt,hr,id,disch)
       data_rows.append(atuple)
     
@@ -322,7 +332,7 @@ def parse_frxst(dirname):
       logging.info("Data file contains %s rows", str(len(data_rows)))
     else:
       logging.error("No rows in data file!")
-      sys.exit()
+      return None
 
   except IOError as e:
     if e.errno == errno.EACCES:
@@ -373,28 +383,29 @@ def upload_flow_data(data_rows):
 
 
 def main():
+	"""
+	Loops thru a number of index values,retrieved from a db query, reads rows 
+	from the csv file passed on the command line
+	Each row contains data for a certain station at a certain time
+	The loop aggregates the data, and creates a discharge array for each station
+	This array is fed to a function to create a hydrograph for each station
   """
-  Loops thru a number of index values,retrieved from a db query, reads rows 
-  from the csv file passed on the command line
-  Each row contains data for a certain station at a certain time
-  The loop aggregates the data, and creates a discharge array for each station
-  Then 2 subroutines are called:
-  - first to get the probability string for the max flow of each station for this event
-  - second to create a hydrograph for this station
-  """
-  datadir = get_latest_datadir()
-  if datadir is None:
-    exit
-  else:	
-    data_rows = parse_frxst(datadir)
-    if (data_rows is None):
-      sys.exit()
-    else:
-    # we have data, go ahead
-      do_loop(data_rows)
-    # INSERT to the database
-      upload_flow_data(data_rows)
 
+	logging.info("*** Hydrograph process started ***")
+	datadir = get_latest_datadir()
+	if datadir is None:
+		exit
+	else:	
+		data_rows = parse_frxst(datadir)
+		if (data_rows is None):
+			sys.exit()
+		else:
+    # we have data, go ahead
+			do_loop(data_rows)
+    # INSERT to the database
+			upload_flow_data(data_rows)
+
+	logging.info("*** Hydrograph Process completed ***")
   # end of main()
 
 
