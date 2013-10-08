@@ -179,7 +179,11 @@ def create_graph(prob, num, disch, hrs, dt):
 	plt.figtext(0.13, 0.87, "Initialized: "+dt, size="medium", weight="bold", backgroundcolor="#EDEA95")
 	ln = plt.plot(hrs, disch)
 	# Get max discharge to size the graph
-	dis_max = max(disch)
+	try:
+		dis_max = max(disch)
+	except:
+		dis_max = 0
+
 	if dis_max <= 10:
 		y_max = 10
 	else:
@@ -410,26 +414,34 @@ def main():
 
 
 if __name__ == "__main__":
+	# Get into script directory
+	if (len(sys.argv) == 2):
+		script_path = sys.argv(1)
+	else:
+		# No script path passed on command line, assume "/usr/local/sbin"
+		script_path = "/usr/local/sbin"
 
-  # First get configurations
-  config = ConfigParser.ConfigParser()
-  config.read("hydrographs.conf")
-  min_hr = config.getint("General", "min_hr")
-  max_hr = config.getint("General","max_hr")
-  hr_col = config.getint("General", "hr_col")
-  in_path = config.get("General", "in_path")
-  disch_col = config.getint("General", "disch_col")
-  ts_file = config.get("General", "timestamp_file")
-  data_file = config.get("General", "disch_data_file")
-  log_file = config.get("General", "logfile")
-  out_path = config.get("Graphs","out_path")
-  out_pref = config.get("Graphs", "out_pref")
-  host = config.get("Db","host")
-  dbname = config.get("Db","dbname")
-  user = config.get("Db","user")
-  password = config.get("Db","password")
+	os.chdir(script_path)
+
+  # Get configurations
+	config = ConfigParser.ConfigParser()
+	config.read("hydrographs.conf")
+	min_hr = config.getint("General", "min_hr")
+	max_hr = config.getint("General","max_hr")
+	hr_col = config.getint("General", "hr_col")
+	in_path = config.get("General", "in_path")
+	disch_col = config.getint("General", "disch_col")
+	ts_file = config.get("General", "timestamp_file")
+	data_file = config.get("General", "disch_data_file")
+	log_file = config.get("General", "logfile")
+	out_path = config.get("Graphs","out_path")
+	out_pref = config.get("Graphs", "out_pref")
+	host = config.get("Db","host")
+	dbname = config.get("Db","dbname")
+	user = config.get("Db","user")
+	password = config.get("Db","password")
   # Set up logging
-  frmt='%(asctime)s %(levelname)-8s %(message)s'
-  logging.basicConfig(level=logging.DEBUG, format=frmt, filename=log_file, filemode='a')
+	frmt='%(asctime)s %(levelname)-8s %(message)s'
+	logging.basicConfig(level=logging.DEBUG, format=frmt, filename=log_file, filemode='a')
   # Now begin work
-  main()
+	main()
