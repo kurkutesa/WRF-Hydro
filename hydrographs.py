@@ -1,15 +1,20 @@
 #!/usr/bin/env python
 """
-This routine reads a CSV file of flow rates for each of the hydrometer stations
-with hourly data for a period of 24 hours.
-All discharge values are entered into an array for each hydrostation
-The array of discharge values is used build a hydrometric graph for each station
-Graphs are output to png files, one for each station
+Author:   Micha Silver
+Version:  0.1
+Description:  
+  This routine reads a CSV file of flow rates for each of the hydrometer stations
+  with hourly data for a period of 24 hours.
+  All discharge values are entered into an array for each hydrostation
+  The array of discharge values is used build a hydrometric graph for each station
+  Graphs are output to png files, one for each station
 """
 
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import matplotlib.dates as md
+import datetime 
 import numpy as np
 import os, csv, sys, errno
 import psycopg2
@@ -45,62 +50,62 @@ def probability_period(l):
 
 
 def get_stationid_list():
-	"""
-	Make a postgresql database connection and query for a list of all station ids
-	Get both the hydro_station ids and the drain_point ids
-	return the list
-	"""
-	global host
-	global dbname
-	global user
-	global password
+  """
+  Make a postgresql database connection and query for a list of all station ids
+  Get both the hydro_station ids and the drain_point ids
+  return the list
+  """
+  global host
+  global dbname
+  global user
+  global password
 
-	conn_string = "host='"+host+"' dbname='"+dbname+"' user='"+user+"' password='"+password+"'"
-	try:
-		conn = psycopg2.connect(conn_string)
-		curs = conn.cursor()
-		sql = "SELECT id FROM hydro_stations WHERE active='t' UNION SELECT id FROM drain_points WHERE active='t'"
-		curs.execute(sql)
-		rows = curs.fetchall()
-		return rows
-	except psycopg2.DatabaseError, e:
-		logging.error('Error %s',  e)		
-		sys.exit(1)			
-	finally:
-		if conn:
-			conn.close()
+  conn_string = "host='"+host+"' dbname='"+dbname+"' user='"+user+"' password='"+password+"'"
+  try:
+    conn = psycopg2.connect(conn_string)
+    curs = conn.cursor()
+    sql = "SELECT id FROM hydro_stations WHERE active='t' UNION SELECT id FROM drain_points WHERE active='t'"
+    curs.execute(sql)
+    rows = curs.fetchall()
+    return rows
+  except psycopg2.DatabaseError, e:
+    logging.error('Error %s',  e)		
+    sys.exit(1)			
+  finally:
+    if conn:
+      conn.close()
 
 
 def get_station_num(id):
-	"""
-	Make a postgresql database connection and get the station_num 
-	from the hydrograph view for a given station id
-	return the number
-	"""
-	# First get configurations
-	global host
-	global dbname
-	global user
-	global password
+  """
+  Make a postgresql database connection and get the station_num 
+  from the hydrograph view for a given station id
+  return the number
+  """
+  # First get configurations
+  global host
+  global dbname
+  global user
+  global password
 
-	conn_string = "host='"+host+"' dbname='"+dbname+"' user='"+user+"' password='"+password+"'"
-	try:
-		conn = psycopg2.connect(conn_string)
-		curs = conn.cursor()
-		sql = "SELECT station_num FROM hydrograph_locations WHERE id= %s;" % id
-		curs.execute(sql)
-		row = curs.fetchone()
-		if (curs.rowcount <1):
-			return None
-		else:
-			return row[0]
+  conn_string = "host='"+host+"' dbname='"+dbname+"' user='"+user+"' password='"+password+"'"
+  try:
+    conn = psycopg2.connect(conn_string)
+    curs = conn.cursor()
+    sql = "SELECT station_num FROM hydrograph_locations WHERE id= %s;" % id
+    curs.execute(sql)
+    row = curs.fetchone()
+    if (curs.rowcount <1):
+      return None
+    else:
+      return row[0]
 
-	except psycopg2.DatabaseError, e:
-		logging.error('Error %s', e)		
-		sys.exit(1)			
-	finally:
-		if conn:
-			conn.close()
+  except psycopg2.DatabaseError, e:
+    logging.error('Error %s', e)		
+    sys.exit(1)			
+  finally:
+    if conn:
+      conn.close()
 
 
 
@@ -154,107 +159,120 @@ def update_maxflow(id, mf):
 
 
 def create_graph(prob, num, disch, hrs, dt):
-	""" 
-	Creates a hydrograph (png image file) using the array of discharges from the input parameter
-	"""
-	global out_path
-	global out_pref
-	# Make sure target directory exists
-	try:
-		os.makedirs(out_path)
-	except OSError:
-		if os.path.exists(out_path):
-			pass
-		else:
-			raise
-		
-	logging.info("Creating graph for station num: %s",str(num))
-	fig = plt.figure()
-	plt.xlabel('Hours')
-	plt.ylabel('Discharge (m3/sec)')
-	stnum=str(num)
-	plt.suptitle('Station Number: '+ stnum, fontsize=18)
-	prob_str="Return period: "+prob
-	plt.title(prob_str,size=14)
-	plt.figtext(0.13, 0.87, "Initialized: "+dt, size="medium", weight="bold", backgroundcolor="#EDEA95")
-	ln = plt.plot(hrs, disch)
-	# Get max discharge to size the graph
-	try:
-		dis_max = max(disch)
-	except:
-		dis_max = 0
+  """ 
+  Creates a hydrograph (png image file) using the array of discharges from the input parameter
+  """
+  global out_path
+  global out_pref
+  # Make sure target directory exists
+  try:
+    os.makedirs(out_path)
+  except OSError:
+    if os.path.exists(out_path):
+      pass
+    else:
+      raise
 
-	if dis_max <= 10:
-		y_max = 10
-	else:
-		y_max = 1.05*dis_max
+  logging.info("Creating graph for station num: %s",str(num))
+  fig = plt.figure()
+  plt.xlabel('Hours')
+  plt.ylabel('Discharge (m3/sec)')
+  stnum=str(num)
+  plt.suptitle('Station Number: '+ stnum, fontsize=18)
+  prob_str="Return period: "+prob
+  plt.title(prob_str,size=14)
+  plt.figtext(0.13, 0.87, "Initialized: "+dt, size="medium", weight="bold", backgroundcolor="#EDEA95")
+  ln = plt.plot(hrs,disch)
+  # Get max discharge to size the graph
+  try:
+    dis_max = max(disch)
+  except:
+    dis_max = 0
+
+  if dis_max <= 10:
+    y_max = 10
+  else:
+    y_max = 1.05*dis_max
 	
-	plt.ylim(ymin=0, ymax=y_max)
-	plt.setp(ln, linewidth=3, color='b')
-	outpng=os.path.join(out_path,out_pref + stnum + ".png")
-	plt.savefig(outpng)
+  plt.ylim(ymin=0, ymax=y_max)
+  plt.setp(ln, linewidth=3, color='b')
+  # Setup date format for X axis
+  xfmt = md.DateFormatter('%d-%m-%Y %H:%M')
+  plt.gca().xaxis.set_major_formatter(xfmt)
+  ax = fig.add_subplot(111)
+  ax.xaxis_date() 
+  plt.setp(ax.get_xticklabels(), rotation=30, fontsize=7)
+  outpng=os.path.join(out_path,out_pref + stnum + ".png")
+  plt.savefig(outpng)
+
 
 
 def do_loop(data_rows):
-	"""
-	Loops thru the list passed as a parameter repeatedly,
-	searching for those lines that match an id
-	Obtains the discharge and hour values, and accumulates them into a list
-	"""
-	# Get the list of station ids
-	ids = get_stationid_list()
+  """
+  Loops thru the list of station ids, 
+  For each id, search for those lines in data that match that id
+  Obtains the discharge and hour values, and accumulates them into lists
+  Send those lists to the create graph function
+  """
+  # Get the list of station ids
+  ids = get_stationid_list()
 			
-	for i in range(0,len(ids)):
-		id = ids[i][0]
-		logging.info("Working on station id: %s",str(id))
-		datai = []
-		for row in data_rows:
-		# THe third column (numbered from 0) has the station id
-		# Collect all data for one station into a data array
-			if (int(row[3]) == id):
-				datai.append(row)
+  for i in range(0,len(ids)):
+    id = ids[i][0]
+    logging.info("Working on station id: %s",str(id))
+    datai = []
+    for row in data_rows:
+    # THe third column (numbered from 0) has the station id
+    # Collect all data for one station into a data array
+      if (int(row[3]) == id):
+        datai.append(row)
+        
+    # Initialize the two arrays for hours and discharge
+    hrs=[]
+    disch=[]
+    dis_times=[]
+    max_disch=0
+    if (len(datai) == 0):
+      exit
+    else:
+      # Grab the date for use later in the graph (needed only once)
+      date_str = datai[1][1]
+      #logging.debug("Data for date: ",date_str)
 
-		# Initialize and fill arrays for hours and discharge
-		hrs=[]
-		disch=[]
-		max_disch=0
-		if (len(datai) == 0):
-			exit
-		else:
-			# Grab the date for use later in the graph (needed only once)
-			date_str = datai[1][1]
-			#logging.debug("Data for date: ",date_str)
+      for j in range(len(datai)):
+      # Collect the date strings and discharge from this subset of data
+      # Get hour and discharge column from config
+        hr = int(datai[j][hr_col])/3600
+        dis_time = matplotlib.dates.datestr2num(datai[j][dt_str_col])
+      # Limit graph from minimum hour (from config) to max hour 
+        if (hr>min_hr and hr<=max_hr):
+          hrs.append(hr)
+          dis_times.append(dis_time)
+        # Get "disch_col" column: has the discharge in cubic meters
+          dis = float(datai[j][disch_col])
+          disch.append(dis)
+          # Keep track of the maximum discharge for this hydro station
+          if dis>max_disch:
+            max_disch=dis
 
-			for j in range(len(datai)):
-			# Get hour and discharge column from config
-				hr = int(datai[j][hr_col])/3600
-			# Limit graph from minimum hour (from config) to max hour 
-				if (hr>min_hr and hr<=max_hr):
-					hrs.append(hr)
-				 # Get "disch_col" column: has the discharge in cubic meters
-					dis = float(datai[j][disch_col])
-					disch.append(dis)
-					# Keep track of the maximum discharge for this hydro station
-					if dis>max_disch:
-	 					max_disch=dis
+      # Now use the max_disch to update the maxflows database table
+      # and get back the flow_level for this station
+      level = update_maxflow(int(id), max_disch)
 
-		# Now use the max_disch to update the maxflows database table
-		# and get back the flow_level for this station
-			level = update_maxflow(int(id), max_disch)
+      # logging.debug( "Using: %s", str(len(hrs)), " data points.")
+      #	logging.debug( "Hour: %s", str(hr),  "Disch: %s", str(dis))
+      # Continue ONLY if level actually has value
+      if (level is None):
+        logging.warning( "No station with id: %s",str(id))
+        exit
+      else:
+        station_num = get_station_num(int(id))
+        #logging.debug( "Station num: %s", str(station_num), " has max discharge: %s", str(max_disch))
+        # Find which return period this max flow is in
+        prob_str = probability_period(level) 
+        # Create the graph
+        create_graph(prob_str, station_num, disch, dis_times, date_str)
 
-		#	logging.debug( "Using: %s", str(len(hrs)), " data points.")
- 		#	logging.debug( "Hour: %s", str(hr),  "Disch: %s", str(dis))
-		# Continue ONLY if level actually has value
-			if (level is None):
-				logging.warning( "No station with id: %s",str(id))
-				exit
-			else:
-				station_num = get_station_num(int(id))
-				#logging.debug( "Station num: %s", str(station_num), " has max discharge: %s", str(max_disch))
-				# Find which return period this max flow is in
-				prob_str = probability_period(level) 
-				# Create the graph
-				create_graph(prob_str, station_num, disch, hrs, date_str)
 
 
 def get_latest_datadir():
@@ -283,25 +301,25 @@ def get_latest_datadir():
   new_data_dir = None
   for d in os.listdir(in_path):
     if os.path.isdir(os.path.join(in_path,d)):
-			logging.debug("Trying path: %s", os.path.join(in_path,d))
-			try:
-				ts = os.path.getmtime(os.path.join(in_path,d,data_file))
+      logging.debug("Trying path: %s", os.path.join(in_path,d))
+      try:
+        ts = os.path.getmtime(os.path.join(in_path,d,data_file))
         # Compare timestamp for each frxst file in each subdir 
         # with the value from the last timestamp file
-				if ts > last_ts:
-					new_ts = ts
-					new_data_dir = d
+        if ts > last_ts:
+          new_ts = ts
+          new_data_dir = d
     
-			except OSError as e:
-				logging.warning("Data file in subdir: %s not yet available. %s", d, e.strerror)
+      except OSError as e:
+        logging.warning("Data file in subdir: %s not yet available. %s", d, e.strerror)
 
   # If there is no newer frxst file, return None
   # otherwise return the subdir of the new data
   # and write out the new timestamp to the last timestamp file (for next time)
   if new_ts is None:
-		logging.info("No new data file")
-		f.close()
-		return None
+    logging.info("No new data file")
+    f.close()
+    return None
 
   else:
     f.seek(0)
@@ -317,6 +335,7 @@ def get_latest_datadir():
 def parse_frxst(dirname):
   """
   Scan the input data file, and get all rows into a list of lists
+  Add a column "datestr" wihich concatenates the date and hour
   Return the list
   """
   global in_path
@@ -327,9 +346,10 @@ def parse_frxst(dirname):
   try:
     f = open(input_file, 'rb')
     for line in f.readlines():
-			# Force discharge to a float
+      # Force discharge to a float
       secs, dt, hr, id, disch = int(line[0:8]), line[9:19], line[20:28], int(line[32:36]), float(line[59:66])
-      atuple=(secs,dt,hr,id,disch)
+      dt_str = dt+" "+hr
+      atuple=(secs,dt,hr,id,disch,dt_str)
       data_rows.append(atuple)
     
     if (len(data_rows) > 1):
@@ -387,61 +407,64 @@ def upload_flow_data(data_rows):
 
 
 def main():
-	"""
-	Loops thru a number of index values,retrieved from a db query, reads rows 
-	from the csv file passed on the command line
-	Each row contains data for a certain station at a certain time
-	The loop aggregates the data, and creates a discharge array for each station
-	This array is fed to a function to create a hydrograph for each station
+  """
+  Loops thru a number of index values,retrieved from a db query, reads rows 
+  from the csv file passed on the command line
+  Each row contains data for a certain station at a certain time
+  The loop aggregates the data, and creates a discharge array for each station
+  This array is fed to a function to create a hydrograph for each station
   """
 
-	logging.info("*** Hydrograph process started ***")
-	datadir = get_latest_datadir()
-	if datadir is None:
-		exit
-	else:	
-		data_rows = parse_frxst(datadir)
-		if (data_rows is None):
-			sys.exit()
-		else:
+  logging.info("*** Hydrograph process started ***")
+  datadir = get_latest_datadir()
+  if datadir is None:
+    exit
+  else:	
+    data_rows = parse_frxst(datadir)
+    if (data_rows is None):
+      sys.exit()
+    else:
     # we have data, go ahead
-			do_loop(data_rows)
+      do_loop(data_rows)
     # INSERT to the database
-			upload_flow_data(data_rows)
+    # upload_flow_data(data_rows)
 
-	logging.info("*** Hydrograph Process completed ***")
+  logging.info("*** Hydrograph Process completed ***")
   # end of main()
 
 
 if __name__ == "__main__":
-	# Get into script directory
-	if (len(sys.argv) == 2):
-		script_path = sys.argv(1)
-	else:
-		# No script path passed on command line, assume "/usr/local/sbin"
-		script_path = "/usr/local/sbin"
+# Get into script directory
+  if (len(sys.argv) == 2):
+    script_path = sys.argv[1]
+  else:
+  # No script path passed on command line, assume "/usr/local/sbin"
+    script_path = "/usr/local/sbin"
 
-	os.chdir(script_path)
+  os.chdir(script_path)
 
-  # Get configurations
-	config = ConfigParser.ConfigParser()
-	config.read("hydrographs.conf")
-	min_hr = config.getint("General", "min_hr")
-	max_hr = config.getint("General","max_hr")
-	hr_col = config.getint("General", "hr_col")
-	in_path = config.get("General", "in_path")
-	disch_col = config.getint("General", "disch_col")
-	ts_file = config.get("General", "timestamp_file")
-	data_file = config.get("General", "disch_data_file")
-	log_file = config.get("General", "logfile")
-	out_path = config.get("Graphs","out_path")
-	out_pref = config.get("Graphs", "out_pref")
-	host = config.get("Db","host")
-	dbname = config.get("Db","dbname")
-	user = config.get("Db","user")
-	password = config.get("Db","password")
+# Get configurations
+  config = ConfigParser.ConfigParser()
+  config.read("hydrographs.conf")
+  min_hr = config.getint("General", "min_hr")
+  max_hr = config.getint("General","max_hr")
+  hr_col = config.getint("General", "hr_col")
+  in_path = config.get("General", "in_path")
+  disch_col = config.getint("General", "disch_col")
+  dt_str_col = config.getint("General", "dt_str_col")
+  ts_file = config.get("General", "timestamp_file")
+  data_file = config.get("General", "disch_data_file")
+  log_file = config.get("General", "logfile")
+  out_path = config.get("Graphs","out_path")
+  out_pref = config.get("Graphs", "out_pref")
+  host = config.get("Db","host")
+  dbname = config.get("Db","dbname")
+  user = config.get("Db","user")
+  password = config.get("Db","password")
   # Set up logging
-	frmt='%(asctime)s %(levelname)-8s %(message)s'
-	logging.basicConfig(level=logging.DEBUG, format=frmt, filename=log_file, filemode='a')
+  frmt='%(asctime)s %(levelname)-8s %(message)s'
+  logging.basicConfig(level=logging.DEBUG, format=frmt, filename=log_file, filemode='a')
+ 
   # Now begin work
-	main()
+  main()
+
