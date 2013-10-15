@@ -405,6 +405,55 @@ def upload_flow_data(data_rows):
       conn.close()
 
 
+def upload_model_timing(data_rows):
+  """
+  Grab the init date-time of the gfc data (from the first row of data_rows)
+  and the time the model completed (from the last_timestamp file)
+  INSERT a row into the model_timing database table with three timestamps:
+  gfc init, wrf completed, and graphs available
+  """
+  global ts_file
+  global host
+  global dbname
+  global user
+  global password
+
+  # Get init hour from the data
+  gfc_init = data_rows[1][5]
+  # Read existing timestamp from last timestamp file
+  try:
+    f = open(ts_file,"r+")
+    last_ts = float(f.readline())
+
+  except IOError as e:
+  # Can't get a value from the last timesatmp file. Assume 0
+    logging.warning( "Can't access timestamp file: %s", e.strerror)
+    last_ts = 0
+  
+  f.close()
+
+  model_complete = datetime.datetime.fromtimestamp(last_ts).strftime('%Y-%m-%d %H:%M')
+  graphs_complete = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+  #print "GFC: "+str(gfc_init)+", MODEL: "+str(model_complete)+", GRAPHS: "+str(graphs_complete) 
+
+  conn_string = "host='"+host+"' dbname='"+dbname+"' user='"+user+"' password='"+password+"'"
+  try:
+    conn = psycopg2.connect(conn_string)
+    curs = conn.cursor()
+    
+    data = (str(gfc_init), str(model_complete), str(graphs_complete))
+    sql = "INSERT INTO model_timing VALUES (to_timestamp(%s,'YYYY-MM-DD HH24:MI'), "
+    sql += "to_timestamp(%s,'YYYY-MM-DD HH24:MI'), to_timestamp(%s,'YYYY-MM-DD HH24:MI'))"
+    curs.execute(sql, data)
+    conn.commit()
+
+  except psycopg2.DatabaseError, e:
+    logging.error('Error %s', e)
+    sys.exit(1)
+  finally:
+    if conn:
+      conn.close()
+
 
 def main():
   """
@@ -427,7 +476,8 @@ def main():
     # we have data, go ahead
       do_loop(data_rows)
     # INSERT to the database
-			upload_flow_data(data_rows)
+      upload_flow_data(data_rows)
+      upload_model_timing(data_rows)
 
   logging.info("*** Hydrograph Process completed ***")
   # end of main()
