@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as md
 import datetime 
 import numpy as np
-import os, csv, sys, errno
+import os, csv, sys, errno, shutil
 import psycopg2
 import ConfigParser, logging
 
@@ -455,6 +455,20 @@ def upload_model_timing(data_rows):
       conn.close()
 
 
+def copy_to_archive(datadir):
+  """ 
+  Copies the latest directory to the website archive directory
+  """
+  global web_archive
+  destdir = os.path.join(web_archive,datadir)
+
+  try:
+    shutil.copytree(datadir, destdir)
+    logging.info("Data files copied to: "+destdir)
+  except (IOError, os.error) as e:
+    logging.error("Error %s", str(e)+" from: "+datadir+" to: "+web_archive)
+
+
 def main():
   """
   Loops thru a number of index values,retrieved from a db query, reads rows 
@@ -474,10 +488,11 @@ def main():
       sys.exit()
     else:
     # we have data, go ahead
-      do_loop(data_rows)
+#      do_loop(data_rows)
     # INSERT to the database
-      upload_flow_data(data_rows)
-      upload_model_timing(data_rows)
+#      upload_flow_data(data_rows)
+#      upload_model_timing(data_rows)
+      copy_to_archive(datadir)
 
   logging.info("*** Hydrograph Process completed ***")
   # end of main()
@@ -511,6 +526,7 @@ if __name__ == "__main__":
   dbname = config.get("Db","dbname")
   user = config.get("Db","user")
   password = config.get("Db","password")
+  web_archive = config.get("Web", "web_archive")
   # Set up logging
   frmt='%(asctime)s %(levelname)-8s %(message)s'
   logging.basicConfig(level=logging.DEBUG, format=frmt, filename=log_file, filemode='a')
