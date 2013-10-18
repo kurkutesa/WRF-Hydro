@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as md
 import datetime 
 import numpy as np
-import os, csv, sys, errno
+import os, csv, sys, errno, shutil
 import psycopg2
 import ConfigParser, logging
 
@@ -301,13 +301,16 @@ def get_latest_datadir():
   new_data_dir = None
   for d in os.listdir(in_path):
     if os.path.isdir(os.path.join(in_path,d)):
-      #logging.debug("Trying path: %s", os.path.join(in_path,d))
+      logging.debug("Trying path: %s", os.path.join(in_path,d))
       try:
         ts = os.path.getmtime(os.path.join(in_path,d,data_file))
         # Compare timestamp for each frxst file in each subdir 
         # with the value from the last timestamp file
         if ts > last_ts:
           new_ts = ts
+          # Reset last_ts so that if the directories are not checked in order
+          # The most recent timestamp will always be used
+          last_ts = ts
           new_data_dir = d
     
       except OSError as e:
@@ -323,6 +326,7 @@ def get_latest_datadir():
 
   else:
     f.seek(0)
+    logging.debug("Updating last_timestamp to: "+str(new_ts))
     f.write(str(new_ts))
     f.truncate()
     f.close()
@@ -405,6 +409,69 @@ def upload_flow_data(data_rows):
       conn.close()
 
 
+def upload_model_timing(data_rows):
+  """
+  Grab the init date-time of the gfc data (from the first row of data_rows)
+  and the time the model completed (from the last_timestamp file)
+  INSERT a row into the model_timing database table with three timestamps:
+  gfc init, wrf completed, and graphs available
+  """
+  global ts_file
+  global host
+  global dbname
+  global user
+  global password
+
+  # Get init hour from the data
+  gfc_init = data_rows[1][5]
+  # Read existing timestamp from last timestamp file
+  try:
+    f = open(ts_file,"r+")
+    last_ts = float(f.readline())
+
+  except IOError as e:
+  # Can't get a value from the last timesatmp file. Assume 0
+    logging.warning( "Can't access timestamp file: %s", e.strerror)
+    last_ts = 0
+  
+  f.close()
+
+  model_complete = datetime.datetime.fromtimestamp(last_ts).strftime('%Y-%m-%d %H:%M')
+  graphs_complete = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+  #print "GFC: "+str(gfc_init)+", MODEL: "+str(model_complete)+", GRAPHS: "+str(graphs_complete) 
+
+  conn_string = "host='"+host+"' dbname='"+dbname+"' user='"+user+"' password='"+password+"'"
+  try:
+    conn = psycopg2.connect(conn_string)
+    curs = conn.cursor()
+    
+    data = (str(gfc_init), str(model_complete), str(graphs_complete))
+    sql = "INSERT INTO model_timing VALUES (to_timestamp(%s,'YYYY-MM-DD HH24:MI'), "
+    sql += "to_timestamp(%s,'YYYY-MM-DD HH24:MI'), to_timestamp(%s,'YYYY-MM-DD HH24:MI'))"
+    curs.execute(sql, data)
+    conn.commit()
+
+  except psycopg2.DatabaseError, e:
+    logging.error('Error %s', e)
+    sys.exit(1)
+  finally:
+    if conn:
+      conn.close()
+
+def copy_to_archive(datadir):
+  """ 
+  Copies the latest directory to the website archive directory
+  """
+  global web_archive
+  destdir = os.path.join(web_archive,datadir)
+  srcdir  = os.path.join(in_path, datadir)  
+  try:
+    shutil.copytree(srcdir, destdir)
+    logging.info("Data files copied to: "+destdir)
+  except (IOError, os.error) as e:
+    logging.error("Error %s", str(e)+" from: "+datadir+" to: "+web_archive)
+
+
 
 def main():
   """
@@ -427,7 +494,9 @@ def main():
     # we have data, go ahead
       do_loop(data_rows)
     # INSERT to the database
-			upload_flow_data(data_rows)
+      upload_flow_data(data_rows)
+      upload_model_timing(data_rows)
+      copy_to_archive(datadir)
 
   logging.info("*** Hydrograph Process completed ***")
   # end of main()
@@ -461,6 +530,7 @@ if __name__ == "__main__":
   dbname = config.get("Db","dbname")
   user = config.get("Db","user")
   password = config.get("Db","password")
+  web_archive = config.get("Web","web_archive")
   # Set up logging
   frmt='%(asctime)s %(levelname)-8s %(message)s'
   logging.basicConfig(level=logging.DEBUG, format=frmt, filename=log_file, filemode='a')
