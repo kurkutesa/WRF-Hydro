@@ -395,7 +395,7 @@ def upload_flow_data(data_rows):
       id = row[3]
       mf = row[4]
       data = (dt, id, mf)
-      sql = "INSERT INTO predicted_flow_data (pred_timestamp, id, max_flow) VALUES (%s, %s, %s)"
+      sql = "INSERT INTO model_flow_data (model_timestamp, station_id, max_flow) VALUES (%s, %s, %s)"
       curs.execute(sql,data)
 
     conn.commit()
