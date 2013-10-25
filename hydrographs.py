@@ -1,13 +1,18 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 Author:   Micha Silver
-Version:  0.1
+Version:  0.2
 Description:  
   This routine reads a CSV file of flow rates for each of the hydrometer stations
   with hourly data for a period of 24 hours.
   All discharge values are entered into an array for each hydrostation
   The array of discharge values is used build a hydrometric graph for each station
   Graphs are output to png files, one for each station
+
+Options:
+	Command line takes only one option: the directory containing hydrographs.conf (the config file)
+	all other configurations are in that file
 """
 
 import matplotlib
@@ -19,6 +24,93 @@ import numpy as np
 import os, csv, sys, errno, shutil
 import psycopg2
 import ConfigParser, logging
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+
+def send_alerts():
+	""" 
+	Send an email to each user, based on the level she requests,
+	listing the hydro stations, and the max flow expected at that station
+	for stations with flow return rate >= the level the user asks for
+	rate = 0 means no alerts
+	rate = 1 means send alerts for any flow > 1 cube per sec
+	rate = 2 means send alerts for any flow above 2 yr return rate
+	rate = 3 means send alerts for any flow above 5 yr return rate
+	etc...
+	"""
+	# First get list of users with rate >0
+	global host
+	global dbname
+	global user
+	global password
+
+	conn_string = "host='"+host+"' dbname='"+dbname+"' user='"+user+"' password='"+password+"'"
+	try:
+		conn = psycopg2.connect(conn_string)
+		curs = conn.cursor()
+		sql = "SELECT full_name, email_addr, reshut_num, alert_level, pk_uid FROM users WHERE active='t' and alert_level>0"
+		curs.execute(sql)
+		users = curs.fetchall()
+	except psycopg2.DatabaseError, e:
+		logging.error('Error %s',  e)
+		sys.exit(1)
+
+	# smtp connection details from conf file
+	smtp_user = config.get("SMTP","smtp_user")
+	smtp_pass = config.get("SMTP", "smtp_pass")
+	smtp_server = config.get("SMTP", "smtp_server")
+	smtp_port = config.getint("SMTP", "smtp_port")
+
+	# Loop thru users and get all stations with return period equal or above the user's request
+	for u in users:
+		#logging.info("Sending alert to User: %s with ID: %s at: %s for return period %s" ,u[0], u[4], u[1], u[3])
+		# For each user, find the hydrographs she has access to, 
+		# with return rate above her requested level
+		sql = 	"SELECT h.station_name, m.max_flow FROM max_flows AS m JOIN hydro_stations AS h"
+		sql +=	" ON m.id=h.id WHERE h.reshut_num IN ("
+		sql += 	" SELECT reshut_num FROM access WHERE user_id=%s)"
+		sql +=	" AND flow_level >= %s;"
+		data = (u[4], u[3])
+		curs.execute(sql, data)
+		stations = curs.fetchall()
+		alert_count = curs.rowcount
+		if alert_count == 0:
+			continue
+
+		logging.info ("Found %s stations with alert for user %s ." % (alert_count, str(u[1])))
+		
+		# Setup smtp connection
+		svr = smtplib.SMTP(smtp_server, smtp_port)
+		sendfrom = 'micha@arava.co.il'
+		# Start constructing email message
+		rcptto = u[1]
+		f = open('alert_msg.txt','r')
+		ff= open('alert_footer.txt','r')
+		body_text = f.read()
+		for h in stations:
+			#logging.info("ALerting: %s for station: %s. Max Flow: %s",u[0], h[0], h[1])
+			body_text += "<tr><td>%s</td><td>%s</td></tr>" % ( str(h[0]), str(h[1]) )
+
+		body_text += "</table>"
+		body_text += ff.read()
+		msg = MIMEText(body_text, 'html')
+		msg['From'] = sendfrom
+		msg['To'] = rcptto
+		msg['Subject'] = "WRF-Hydro alert"
+		# message is ready, perform the send
+		try:
+			svr.ehlo()
+			svr.starttls()
+			svr.ehlo()
+			svr.login(smtp_user,smtp_pass)
+			svr.sendmail(sendfrom, rcptto, msg.as_string())
+		except SMTPException, e:
+			logging.error("SMTP failed: %s" % str(e))
+		finally:
+			svr.quit()
+
 
 
 def probability_period(l):
@@ -497,6 +589,7 @@ def main():
       upload_flow_data(data_rows)
       upload_model_timing(data_rows)
       copy_to_archive(datadir)
+			send_alerts()
 
   logging.info("*** Hydrograph Process completed ***")
   # end of main()
@@ -531,6 +624,7 @@ if __name__ == "__main__":
   user = config.get("Db","user")
   password = config.get("Db","password")
   web_archive = config.get("Web","web_archive")
+
   # Set up logging
   frmt='%(asctime)s %(levelname)-8s %(message)s'
   logging.basicConfig(level=logging.DEBUG, format=frmt, filename=log_file, filemode='a')
