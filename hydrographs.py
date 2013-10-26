@@ -349,7 +349,7 @@ def do_loop(data_rows):
           # Keep track of the maximum discharge and time for this hydro station
           if dis>max_disch:
             max_disch = dis
-            max_disch_time = dis_time
+            max_disch_time = datai[j][dt_str_col]
 
       # Now use the max_disch to update the maxflows database table
       # and get back the flow_level for this station
