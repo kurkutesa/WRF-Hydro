@@ -30,86 +30,86 @@ from email.mime.multipart import MIMEMultipart
 
 
 def send_alerts():
-	""" 
-	Send an email to each user, based on the level she requests,
-	listing the hydro stations, and the max flow expected at that station
-	for stations with flow return rate >= the level the user asks for
-	rate = 0 means no alerts
-	rate = 1 means send alerts for any flow > 1 cube per sec
-	rate = 2 means send alerts for any flow above 2 yr return rate
-	rate = 3 means send alerts for any flow above 5 yr return rate
-	etc...
-	"""
-	# First get list of users with rate >0
-	global host
-	global dbname
-	global user
-	global password
+  """ 
+  Send an email to each user, based on the level she requests,
+  listing the hydro stations, and the max flow expected at that station
+  for stations with flow return rate >= the level the user asks for
+  rate = 0 means no alerts
+  rate = 1 means send alerts for any flow > 1 cube per sec
+  rate = 2 means send alerts for any flow above 2 yr return rate
+  rate = 3 means send alerts for any flow above 5 yr return rate
+  etc...
+  """
+  # First get list of users with rate >0
+  global host
+  global dbname
+  global user
+  global password
+  
+  conn_string = "host='"+host+"' dbname='"+dbname+"' user='"+user+"' password='"+password+"'"
+  try:
+    conn = psycopg2.connect(conn_string)
+    curs = conn.cursor()
+    sql = "SELECT full_name, email_addr, reshut_num, alert_level, pk_uid FROM users WHERE active='t' and alert_level>0"
+    curs.execute(sql)
+    users = curs.fetchall()
+  except psycopg2.DatabaseError, e:
+    logging.error('Error %s',  e)
+    sys.exit(1)
 
-	conn_string = "host='"+host+"' dbname='"+dbname+"' user='"+user+"' password='"+password+"'"
-	try:
-		conn = psycopg2.connect(conn_string)
-		curs = conn.cursor()
-		sql = "SELECT full_name, email_addr, reshut_num, alert_level, pk_uid FROM users WHERE active='t' and alert_level>0"
-		curs.execute(sql)
-		users = curs.fetchall()
-	except psycopg2.DatabaseError, e:
-		logging.error('Error %s',  e)
-		sys.exit(1)
+  # smtp connection details from conf file
+  smtp_user = config.get("SMTP","smtp_user")
+  smtp_pass = config.get("SMTP", "smtp_pass")
+  smtp_server = config.get("SMTP", "smtp_server")
+  smtp_port = config.getint("SMTP", "smtp_port")
 
-	# smtp connection details from conf file
-	smtp_user = config.get("SMTP","smtp_user")
-	smtp_pass = config.get("SMTP", "smtp_pass")
-	smtp_server = config.get("SMTP", "smtp_server")
-	smtp_port = config.getint("SMTP", "smtp_port")
+  # Loop thru users and get all stations with return period equal or above the user's request
+  for u in users:
+    #logging.info("Sending alert to User: %s with ID: %s at: %s for return period %s" ,u[0], u[4], u[1], u[3])
+    # For each user, find the hydrographs she has access to, 
+    # with return rate above her requested level
+    sql = 	"SELECT h.station_name, m.max_flow FROM max_flows AS m JOIN hydro_stations AS h"
+    sql +=	" ON m.id=h.id WHERE h.reshut_num IN ("
+    sql += 	" SELECT reshut_num FROM access WHERE user_id=%s)"
+    sql +=	" AND flow_level >= %s;"
+    data = (u[4], u[3])
+    curs.execute(sql, data)
+    stations = curs.fetchall()
+    alert_count = curs.rowcount
+    if alert_count == 0:
+      continue
 
-	# Loop thru users and get all stations with return period equal or above the user's request
-	for u in users:
-		#logging.info("Sending alert to User: %s with ID: %s at: %s for return period %s" ,u[0], u[4], u[1], u[3])
-		# For each user, find the hydrographs she has access to, 
-		# with return rate above her requested level
-		sql = 	"SELECT h.station_name, m.max_flow FROM max_flows AS m JOIN hydro_stations AS h"
-		sql +=	" ON m.id=h.id WHERE h.reshut_num IN ("
-		sql += 	" SELECT reshut_num FROM access WHERE user_id=%s)"
-		sql +=	" AND flow_level >= %s;"
-		data = (u[4], u[3])
-		curs.execute(sql, data)
-		stations = curs.fetchall()
-		alert_count = curs.rowcount
-		if alert_count == 0:
-			continue
-
-		logging.info ("Found %s stations with alert for user %s ." % (alert_count, str(u[1])))
-		
-		# Setup smtp connection
-		svr = smtplib.SMTP(smtp_server, smtp_port)
-		sendfrom = 'micha@arava.co.il'
-		# Start constructing email message
-		rcptto = u[1]
-		f = open('alert_msg.txt','r')
-		ff= open('alert_footer.txt','r')
-		body_text = f.read()
-		for h in stations:
-			#logging.info("ALerting: %s for station: %s. Max Flow: %s",u[0], h[0], h[1])
-			body_text += "<tr><td>%s</td><td>%s</td></tr>" % ( str(h[0]), str(h[1]) )
-
-		body_text += "</table>"
-		body_text += ff.read()
-		msg = MIMEText(body_text, 'html')
-		msg['From'] = sendfrom
-		msg['To'] = rcptto
-		msg['Subject'] = "WRF-Hydro alert"
-		# message is ready, perform the send
-		try:
-			svr.ehlo()
-			svr.starttls()
-			svr.ehlo()
-			svr.login(smtp_user,smtp_pass)
-			svr.sendmail(sendfrom, rcptto, msg.as_string())
-		except SMTPException, e:
-			logging.error("SMTP failed: %s" % str(e))
-		finally:
-			svr.quit()
+    logging.info ("Found %s stations with alert for user %s ." % (alert_count, str(u[1])))
+	
+    # Setup smtp connection
+    svr = smtplib.SMTP(smtp_server, smtp_port)
+    sendfrom = 'micha@arava.co.il'
+    # Start constructing email message
+    rcptto = u[1]
+    f = open('alert_msg.txt','r')
+    ff= open('alert_footer.txt','r')
+    body_text = f.read()
+    for h in stations:
+      #logging.info("ALerting: %s for station: %s. Max Flow: %s",u[0], h[0], h[1])
+      body_text += "<tr><td>%s</td><td>%s</td></tr>" % ( str(h[0]), str(h[1]) )
+    
+    body_text += "</table>"
+    body_text += ff.read()
+    msg = MIMEText(body_text, 'html')
+    msg['From'] = sendfrom
+    msg['To'] = rcptto
+    msg['Subject'] = "WRF-Hydro alert"
+    # message is ready, perform the send
+    try:
+      svr.ehlo()
+      svr.starttls()
+      svr.ehlo()
+      svr.login(smtp_user,smtp_pass)
+      svr.sendmail(sendfrom, rcptto, msg.as_string())
+    except SMTPException, e:
+      logging.error("SMTP failed: %s" % str(e))
+    finally:
+      svr.quit()
 
 
 
@@ -201,7 +201,7 @@ def get_station_num(id):
 
 
 
-def update_maxflow(id, mf):
+def update_maxflow(id, mf, mt):
   """
   Update the database table "max_flows" with the maximum flow
   for a station id (passed as parameters)
@@ -218,8 +218,8 @@ def update_maxflow(id, mf):
   try:
     conn = psycopg2.connect(conn_string)
     curs = conn.cursor()
-    sql = "UPDATE max_flows SET max_flow=%s WHERE id=%s;"
-    data = (mf, id)
+    sql = "UPDATE max_flows SET max_flow=%s, max_flow_ts=%s WHERE id=%s;"
+    data = (mf, mt, id)
     #logging.debug("Executing: "+sql+data)
     curs.execute(sql, data)
     conn.commit()
@@ -343,13 +343,14 @@ def do_loop(data_rows):
         # Get "disch_col" column: has the discharge in cubic meters
           dis = float(datai[j][disch_col])
           disch.append(dis)
-          # Keep track of the maximum discharge for this hydro station
+          # Keep track of the maximum discharge and time for this hydro station
           if dis>max_disch:
-            max_disch=dis
+            max_disch = dis
+            max_disch_time = dis_time
 
       # Now use the max_disch to update the maxflows database table
       # and get back the flow_level for this station
-      level = update_maxflow(int(id), max_disch)
+      level = update_maxflow(int(id), max_disch, max_disch_time)
 
       # logging.debug( "Using: %s", str(len(hrs)), " data points.")
       #	logging.debug( "Hour: %s", str(hr),  "Disch: %s", str(dis))
@@ -589,7 +590,7 @@ def main():
       upload_flow_data(data_rows)
       upload_model_timing(data_rows)
       copy_to_archive(datadir)
-			send_alerts()
+      send_alerts()
 
   logging.info("*** Hydrograph Process completed ***")
   # end of main()
