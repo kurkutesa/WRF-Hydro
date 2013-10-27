@@ -13,77 +13,89 @@
   -o|--output     : output netcdf filename
   -c|--change-tbl : table (csv format) of mask id values and new values to be applied
   -m|--mask-var   : a variable in the netcdf used as a mask. 
+	-v|--change-var	: the variable in the target netcdf to be changed
 
-  Only those grid cells for which the variable --mask-var contains the value n the change-tbl 
+  Only those grid cells for which the variable --mask-var contains the value in the change-tbl 
   are used to apply the change. 
-  THose cells covered by the mask will have their variable --mask-var 
+  THose cells covered by the mask will have their variable --change-var 
   altered to the value obtained from the change-tbl
-
 """
 
 import os, getopt, sys, csv
 import shutil
-import scipy.io.netcdf as nc
+import numpy as np
+from netCDF4 import Dataset
 
 
 def print_syntax(m):
-  print m
-  print ('Syntax: \n\tchange_nc.py -h|--help (this message)')
-  print ('\tchange_nc.py -i|--input <input netcdf> -o|--output <output netcdf>')
-  print ('\t\t-c|--change-tbl <table of ids and new values> -m|--mask-var <variable used as mask>')
+    print m
+    print ('Syntax: \n\tchange_nc.py -h|--help (this message)')
+    print ('\tchange_nc.py -i|--input <input netcdf> -o|--output <output netcdf> -c|--change-tbl <table of ids and new values>')
+    print ('\t\t-v|--change-var <variable in target netcdf to be altered> -m|--mask-var <variable used as mask>')
 
 
 def get_options(argv):
-  try:
-    opts, args = getopt.getopt(argv, 'hi:o:c:m:', ['help','input=','output=','change-tbl=','mask-var='])
-  except getopt.GetoptError:
-    print_syntax("Options error")
-    return False
+    """
+    Get all command line parameters
+    Make sure each is required parameter is passed
+    """
+    try:
+        opts, args = getopt.getopt(argv, 'hi:o:c:m:v:', ['help','input=','output=','change-tbl=','change-var=','mask-var='])
+    except getopt.GetoptError:
+        print_syntax("Options error")
+        return False
 
-# Initialize option names to empty strings
-  in_nc       = ''
-  out_nc      = ''
-  change_tbl  = ''
-  mask_var    = ''
-  syntax_msg  = ''
-  for opt, arg in opts:
-    if opt in ('-h','-help'):
-      print_syntax(syntax_msg)
-      return False
-    elif opt in ("-i", "--input"):
-      in_nc = arg
-    elif opt in ("-o", "--output"):
-      out_nc = arg
-    elif opt in ("-c", "--change-tbl"):
-      change_tbl = arg
-    elif opt in ("-m", "--mask-var"):
-      mask_var = arg
+    # Initialize option names to empty strings
+    in_nc       = ''
+    out_nc      = ''
+    change_tbl  = ''
+    change_var	= ''
+    mask_var    = ''
+    syntax_msg  = ''
+    
+    for opt, arg in opts:
+        if opt in ('-h','--help'):
+            print_syntax(syntax_msg)
+            return False
+        elif opt in ("-i", "--input"):
+            in_nc = arg
+        elif opt in ("-o", "--output"):
+            out_nc = arg
+        elif opt in ("-c", "--change-tbl"):
+            change_tbl = arg
+        elif opt in ("-v", "--change-var"):
+            change_var = arg
+        elif opt in ("-m", "--mask-var"):
+            mask_var = arg
 
-  options = {'in_nc':in_nc,'out_nc':out_nc,'change_tbl':change_tbl, 'mask_var':mask_var}
+    options = {'in_nc':in_nc,'out_nc':out_nc,'change_tbl':change_tbl, 'change_var': change_var, 'mask_var':mask_var}
 
-  # Make sure all options passed on command line
-  have_options = True
-  for k, v in options.iteritems():
-    if len(v) == 0:
-      have_options = False
-    if k == 'in_nc' and len(options[k])==0:
-      syntax_msg += "No input nc file\n"
-      have_options = False
-    if k == 'out_nc' and len(options[k])==0:
-      syntax_msg += "No output nc file\n"
-      have_options = False
-    if k == 'change_tbl' and len(options[k])==0:
-      syntax_msg += "No mask table file\n"
-      have_options = False
-    if k == 'mask_var' and len(options[k])==0:
-      syntax_msg += "No mask variable\n"
-      have_options = False
+    # Make sure all options passed on command line
+    have_options = True
+    for k, v in options.iteritems():
+        if len(v) == 0:
+            have_options = False
+        if k == 'in_nc' and len(options[k])==0:
+            syntax_msg += "No input nc file\n"
+            have_options = False
+        if k == 'out_nc' and len(options[k])==0:
+            syntax_msg += "No output nc file\n"
+            have_options = False
+        if k == 'change_tbl' and len(options[k])==0:
+            syntax_msg += "No mask table file\n"
+            have_options = False
+        if k == 'change_var' and len(options[k])==0:
+            syntax_msg += "No change variable\n"
+            have_options = False
+        if k == 'mask_var' and len(options[k])==0:
+            syntax_msg += "No mask variable\n"
+            have_options = False
   
-  if (have_options == True):
-    return options
-  else:
-    print_syntax(syntax_msg)
-    return False
+    if (have_options == True):
+        return options
+    else:
+        print_syntax(syntax_msg)
+        return False
 
 
 
@@ -110,29 +122,47 @@ def read_mask_values(change_tbl):
 
 
 
-def check_nc_files(in_file, out_file, var):
-  """
-  Verify the the input nc file is available.
-  If the output nc is not available, create it
-  check that the VARIABLE exists in input file
-  """
-  try:
-    os.path.isfile(in_file)
-  except:
-    print "Input file not available"
+def check_nc_files(in_file, out_file, mask, ch_var):
+    """
+    Verify the the input nc file is available.
+    If the output nc is not available, create it
+    check that the VARIABLEs mask and ch_var exist in input/output files
+    """
+    try:
+        os.path.isfile(in_file)
+    except:
+        print "Input file not available"
+        return False
+
+    if not os.path.isfile(out_file):
+        print "Copying %s to %s" % (in_file, out_file)
+        shutil.copyfile(in_file,out_file)
+
+    # Open input file for reading, output file for appending
+    in_nc = Dataset(in_file, 'r')
+    out_nc = Dataset(out_file, 'r')
+    in_var = in_nc.variables[mask]
+    out_var = out_nc.variables[ch_var]
+    if in_var.dimensions == out_var.dimensions and in_var.shape == out_var.shape:
+        return True
+
     return False
 
-  if not os.path.isfile(out_file):
-    shutil.copy(in_file, out_file)
 
-  in_nc = nc.Dataset(in_file, 'r')
-  out_nc = nc.Dataset(out_file, 'w')
-  in_var = in_nc.variables(var)
-  out_var = out_nc.variables(var)
-  if in_var.dimensions == out_var.dimensions and in_var.shape == out_var.shape:
-    return True
+def change_values(i, o, ch_var, mask, dict):
+    """
+    Replace values in nc file 'o' in variable 'var', 
+    where the variable 'mask' in input nc 'i' matches values in the dictionary 'dict'
+    Take new values from 'dict' for each matching mask value
+    """
+    in_nc = Dataset(i, 'r')
+    out_nc = Dataset(o, 'a')
+    in_var = in_nc.variables[mask]
+    out_var = out_nc.variables[ch_var]
 
-  return False
+    for m,v in dict.iteritems():
+        print ("Replace value where mask=%s. \tNew value=%s" % (m, v))
+
 
 
 def main(argv):
@@ -143,16 +173,22 @@ def main(argv):
     #print 'Options entered:'
     #for k in options:
     #  print '\t'+k+' = '+options[k]
-    print "Altering variable: "+ options['mask_var'] + "\t Changing output netcdf: "+ options['out_nc']
+    in_nc       = options['in_nc']
+    out_nc      = options['out_nc']
+    change_var  = options['change_var']
+    mask_var    = options['mask_var']
+
+    print "Altering variable: "+ change_var + "\t Changing output netcdf: "+ out_nc
     mask_dict = read_mask_values(options['change_tbl'])
 
     # check input and output nc files
-    if not (check_nc_files(options['in_nc'],options['out_nc'],options['mask_var'])):
+    if not (check_nc_files(options['in_nc'],options['out_nc'],options['mask_var'], options['change_var'])):
       print "Netcdf files not available"
       sys.exit(0)
     else:
     # Files check out. Good to go
       print "Proceeding with variable replacement"
+      change_values(in_nc, out_nc, change_var, mask_var, mask_dict)
 
 """
 # Open wrfout for reading, new netcdf for writing

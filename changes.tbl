@@ -3,6 +3,7 @@
 # and the new value to be applied to the netcdf file
 # for the cells covered by the mask id value
 # mask_id,new_value
+0,50
 1,20
 2,22
 3,33
