@@ -122,18 +122,21 @@ def read_mask_values(change_tbl):
 
 
 
-def check_nc_files(in_file, out_file, mask, ch_var):
+def change_values(in_file, out_file, ch_var, mask, dict):
     """
-    Verify the the input nc file is available.
-    If the output nc is not available, create it
-    check that the VARIABLEs mask and ch_var exist in input/output files
+    First do a check on the nc files.
+    Then create numpy arrays of the input mask variable, and the output change variable
+    Replace values in output nc file 'o' in variable 'ch_var', 
+    where the variable 'mask' in input nc 'i' matches values in the dictionary 'dict'
+    Take new values from 'dict' for each matching mask value
     """
+
     try:
         os.path.isfile(in_file)
     except:
         print "Input file not available"
         return False
-
+    
     if not os.path.isfile(out_file):
         print "Copying %s to %s" % (in_file, out_file)
         shutil.copyfile(in_file,out_file)
@@ -144,25 +147,56 @@ def check_nc_files(in_file, out_file, mask, ch_var):
     in_var = in_nc.variables[mask]
     out_var = out_nc.variables[ch_var]
     if in_var.dimensions == out_var.dimensions and in_var.shape == out_var.shape:
-        return True
+        # nc files OK, good to go
+        for m,v in dict.iteritems():
+            print ("Replace value where mask=%s. \tNew value=%s" % (m, v))
+        # Get shape and number of dimensions
+        shp = in_var.shape
+        dims = len(shp)
+        # create numpy arrays from the variables in each nc file
+        # Note: must be indexed: [:]. Otherwise array will hold the object, not values
+        in_arr  = np.array(in_var[:])
+        out_arr = np.array(out_var[:])
+        
+        # Now loop. 
+        # Ugly hack: We need a separate loop for each possible number of dimensions
+        if dims == 2:
+            print "Variable %s has 2 dimensions" % str(mask)
+            for i in range(shp[0]):
+                for j in range(shp[1]):
+                    # Check all mask values
+                    for m,v in dict.iteritems():
+                        if in_arr[i][j] == m:
+                            out_arr[i][j] = v
 
-    return False
+        if dims == 3:
+            print "Variable %s has 3 dimensions" % str(mask)
+            for i in range(shp[0]):
+                for j in range(shp[1]):
+                    for k in range(shp[2]):
+                        # Check all mask values
+                        for m,v in dict.iteritems():
+                            if in_arr[i][j][k] == m:
+                                out_arr[i][j][k] = v
+
+        if dims == 4:
+            print "Variable %s has 4 dimensions" % str(mask)
+            for i in range(shp[0]):
+                for j in range(shp[1]):
+                    for k in range(shp[2]):
+                        for l in range(shp[3]):
+                        # Check all mask values
+                            for m,v in dict.iteritems():
+                                if in_arr[i][j][k][l] == m:
+                                   out_arr[i][j][k][l] = v
 
 
-def change_values(i, o, ch_var, mask, dict):
-    """
-    Replace values in nc file 'o' in variable 'var', 
-    where the variable 'mask' in input nc 'i' matches values in the dictionary 'dict'
-    Take new values from 'dict' for each matching mask value
-    """
-    in_nc = Dataset(i, 'r')
-    out_nc = Dataset(o, 'a')
-    in_var = in_nc.variables[mask]
-    out_var = out_nc.variables[ch_var]
+        out_var = out_arr[:]
+        in_nc.close()
+        out_nc.close()
 
-    for m,v in dict.iteritems():
-        print ("Replace value where mask=%s. \tNew value=%s" % (m, v))
-
+    else:
+        return False
 
 
 def main(argv):
@@ -178,56 +212,9 @@ def main(argv):
     change_var  = options['change_var']
     mask_var    = options['mask_var']
 
-    print "Altering variable: "+ change_var + "\t Changing output netcdf: "+ out_nc
     mask_dict = read_mask_values(options['change_tbl'])
+    change_values(in_nc, out_nc, change_var, mask_var, mask_dict)
 
-    # check input and output nc files
-    if not (check_nc_files(options['in_nc'],options['out_nc'],options['mask_var'], options['change_var'])):
-      print "Netcdf files not available"
-      sys.exit(0)
-    else:
-    # Files check out. Good to go
-      print "Proceeding with variable replacement"
-      change_values(in_nc, out_nc, change_var, mask_var, mask_dict)
-
-"""
-# Open wrfout for reading, new netcdf for writing
-mync = nc.Dataset('mytest.nc', 'w')
-wrf = nc.Dataset('wrfout_d03_2013-10-17_000000', 'r')
-# Get 'T' variable dimensions and sizes
-temp = wrf.variables['T']
-print(temp.dimensions)
-print(temp.shape)
-
-# Duplicate in new netcdf file
-mync.createDimension('time',1)
-mync.createDimension('b-t',29)
-mync.createDimension('s-n',222)
-mync.createDimension('w-e',120)
-mync.createVariable('TEMPX2','double',('time','b-t','s-n','w-e'))
-
-# Check new variable
-tempx2 = mync.variables['TEMPX2']
-print(tempx2.dimensions)
-print(tempx2.shape)
-
-# Get values for 'T' variable from wrfout 
-# Note: must be indexed: [:]. Otherwise t will hold the object, not values
-t = wrf.variables['T'][:]
-#print(t)
-# put T * 2 into new netcdf file
-mync.variables['TEMPX2'][:] = t*2
-
-# Get new values from new netcdf file
-# and compare to wrfout values
-print("Original values in wrfout")
-print(temp[0][1])
-print("-------------------------")
-print("New values")
-print(tempx2[0][1])
-
-mync.close()
-"""
 
 if __name__ == "__main__":
   main(sys.argv[1:])
