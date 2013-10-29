@@ -397,7 +397,7 @@ def get_latest_datadir():
   new_data_dir = None
   for d in os.listdir(in_path):
     if os.path.isdir(os.path.join(in_path,d)):
-      logging.debug("Trying path: %s", os.path.join(in_path,d))
+      #logging.debug("Trying path: %s", os.path.join(in_path,d))
       try:
         ts = os.path.getmtime(os.path.join(in_path,d,data_file))
         # Compare timestamp for each frxst file in each subdir 
