@@ -108,16 +108,19 @@ def read_mask_values(change_tbl):
     f = open(change_tbl, 'r')
     mask_csv = csv.reader(f, delimiter=',')
     mask_dict={}
+    mask_cnt = 0
     for ln in mask_csv:
       if not ln[0].startswith('#'):
         mask_dict[ln[0]]=ln[1]
+        mask_cnt += 1
   except IOError, e:
-    print ("Changes table file not available"+str(e))
+      print ("Changes table file not available: "+str(e))
     return False
 
   # test
-  for i,v in mask_dict.iteritems():
-    print "Mask id: "+ i + "\t New value: "+mask_dict[i]
+  #for m,v in mask_dict.iteritems():
+  #  print "Mask id: "+ str(m) + "\t New value: "+ str(mask_dict[m])
+  print "Obtained %s mask variables" % str(mask_cnt)
   return mask_dict
 
 
@@ -143,13 +146,11 @@ def change_values(in_file, out_file, ch_var, mask, dict):
 
     # Open input file for reading, output file for appending
     in_nc = Dataset(in_file, 'r')
-    out_nc = Dataset(out_file, 'r')
+    out_nc = Dataset(out_file, 'a')
     in_var = in_nc.variables[mask]
     out_var = out_nc.variables[ch_var]
     if in_var.dimensions == out_var.dimensions and in_var.shape == out_var.shape:
         # nc files OK, good to go
-        for m,v in dict.iteritems():
-            print ("Replace value where mask=%s. \tNew value=%s" % (m, v))
         # Get shape and number of dimensions
         shp = in_var.shape
         dims = len(shp)
@@ -166,7 +167,7 @@ def change_values(in_file, out_file, ch_var, mask, dict):
                 for j in range(shp[1]):
                     # Check all mask values
                     for m,v in dict.iteritems():
-                        if in_arr[i][j] == m:
+                        if (int(float(in_arr[i][j])) == int(float(m))):
                             out_arr[i][j] = v
 
         if dims == 3:
@@ -188,12 +189,13 @@ def change_values(in_file, out_file, ch_var, mask, dict):
                         # Check all mask values
                             for m,v in dict.iteritems():
                                 if in_arr[i][j][k][l] == m:
-                                   out_arr[i][j][k][l] = v
+                                   out_arr[i][j][k][l] = dict[m]
 
-
-        out_var = out_arr[:]
+        # Now push numpy array back to netcdf variable
+        out_var[:] = out_arr[:]
         in_nc.close()
         out_nc.close()
+        return True
 
     else:
         return False
@@ -204,16 +206,17 @@ def main(argv):
   if (options == False):
     print '\nEnter all options\n'
   else:
-    #print 'Options entered:'
-    #for k in options:
-    #  print '\t'+k+' = '+options[k]
     in_nc       = options['in_nc']
     out_nc      = options['out_nc']
     change_var  = options['change_var']
     mask_var    = options['mask_var']
 
     mask_dict = read_mask_values(options['change_tbl'])
-    change_values(in_nc, out_nc, change_var, mask_var, mask_dict)
+    success = change_values(in_nc, out_nc, change_var, mask_var, mask_dict)
+    if success:
+        print "Completed"
+    else:
+        print "Change values failed"
 
 
 if __name__ == "__main__":
