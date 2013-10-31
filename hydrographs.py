@@ -588,11 +588,11 @@ def main():
       sys.exit()
     else:
     # we have data, go ahead
-      #do_loop(data_rows)
+      do_loop(data_rows)
     # INSERT to the database
-      #upload_flow_data(data_rows)
-      #upload_model_timing(data_rows)
-      #copy_to_archive(datadir)
+      upload_flow_data(data_rows)
+      upload_model_timing(data_rows)
+      copy_to_archive(datadir)
       send_alerts()
 
   logging.info("*** Hydrograph Process completed ***")

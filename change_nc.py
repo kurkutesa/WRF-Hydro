@@ -1,24 +1,24 @@
 #!/usr/bin/env python
 """
-  Author:   Micha Silver
-  Version:  0.1
+    Author:   Micha Silver
+    Version:  0.1
 
-  Description:  
-  This routine reads a netcdf file, copies to a new filename
-  then alters one variable in the new file, 
-  based on parameters passed on the command line
+    Description:  
+    This routine reads a netcdf file, copies to a new filename
+    then alters one variable in the new file, 
+    based on parameters passed on the command line
 
-  Command line options:
-  -i|--input      : input netcdf filename
-  -o|--output     : output netcdf filename
-  -c|--change-tbl : table (csv format) of mask id values and new values to be applied
-  -m|--mask-var   : a variable in the netcdf used as a mask. 
-	-v|--change-var	: the variable in the target netcdf to be changed
+    Command line options:
+    -i|--input      : input netcdf filename
+    -o|--output     : output netcdf filename
+    -c|--change-tbl : table (csv format) of mask id values and new values to be applied
+    -m|--mask-var   : a variable in the netcdf used as a mask. 
+    -v|--change-var	: the variable in the target netcdf to be changed
 
-  Only those grid cells for which the variable --mask-var contains the value in the change-tbl 
-  are used to apply the change. 
-  THose cells covered by the mask will have their variable --change-var 
-  altered to the value obtained from the change-tbl
+    Only those grid cells for which the variable --mask-var contains the value in the change-tbl 
+    are used to apply the change. 
+    THose cells covered by the mask will have their variable --change-var 
+    altered to the value obtained from the change-tbl
 """
 
 import os, getopt, sys, csv
@@ -100,28 +100,26 @@ def get_options(argv):
 
 
 def read_mask_values(change_tbl):
-  """
-  Reads the CSV file change_tbl, skipping comment lines (beginning with #)
-  collects mask values into a list, indexed by the mask ids
-  """
-  try:
-    f = open(change_tbl, 'r')
-    mask_csv = csv.reader(f, delimiter=',')
-    mask_dict={}
-    mask_cnt = 0
-    for ln in mask_csv:
-      if not ln[0].startswith('#'):
-        mask_dict[ln[0]]=ln[1]
-        mask_cnt += 1
-  except IOError, e:
-      print ("Changes table file not available: "+str(e))
-    return False
+    """
+    Reads the CSV file change_tbl, skipping comment lines (beginning with #)
+    collects mask values into a list, indexed by the mask ids
+    """
+    try:
+        f = open(change_tbl, 'r')
+        mask_csv = csv.reader(f, delimiter=',')
+        mask_dict={}
+        mask_cnt = 0
+        for ln in mask_csv:
+            if not ln[0].startswith('#'):
+                mask_dict[ln[0]]=ln[1]
+                mask_cnt += 1
+    
+    except IOError, e:
+        print ("Changes table file not available: "+str(e))
+        return False
 
-  # test
-  #for m,v in mask_dict.iteritems():
-  #  print "Mask id: "+ str(m) + "\t New value: "+ str(mask_dict[m])
-  print "Obtained %s mask variables" % str(mask_cnt)
-  return mask_dict
+    print "Obtained %s mask variables" % str(mask_cnt)
+    return mask_dict
 
 
 
@@ -143,6 +141,8 @@ def change_values(in_file, out_file, ch_var, mask, dict):
     if not os.path.isfile(out_file):
         print "Copying %s to %s" % (in_file, out_file)
         shutil.copyfile(in_file,out_file)
+    else:
+        print "Writing to output file: %s" % out_file
 
     # Open input file for reading, output file for appending
     in_nc = Dataset(in_file, 'r')
@@ -159,37 +159,14 @@ def change_values(in_file, out_file, ch_var, mask, dict):
         in_arr  = np.array(in_var[:])
         out_arr = np.array(out_var[:])
         
-        # Now loop. 
-        # Ugly hack: We need a separate loop for each possible number of dimensions
-        if dims == 2:
-            print "Variable %s has 2 dimensions" % str(mask)
-            for i in range(shp[0]):
-                for j in range(shp[1]):
-                    # Check all mask values
-                    for m,v in dict.iteritems():
-                        if (int(float(in_arr[i][j])) == int(float(m))):
-                            out_arr[i][j] = v
-
-        if dims == 3:
-            print "Variable %s has 3 dimensions" % str(mask)
-            for i in range(shp[0]):
-                for j in range(shp[1]):
-                    for k in range(shp[2]):
-                        # Check all mask values
-                        for m,v in dict.iteritems():
-                            if in_arr[i][j][k] == m:
-                                out_arr[i][j][k] = v
-
-        if dims == 4:
-            print "Variable %s has 4 dimensions" % str(mask)
-            for i in range(shp[0]):
-                for j in range(shp[1]):
-                    for k in range(shp[2]):
-                        for l in range(shp[3]):
-                        # Check all mask values
-                            for m,v in dict.iteritems():
-                                if in_arr[i][j][k][l] == m:
-                                   out_arr[i][j][k][l] = dict[m]
+        # Loop thru input array with ndenumerate function. 
+        for idx, val in np.ndenumerate(in_arr):
+            #Check each index if it matches a mask value
+            for m,v in dict.iteritems():
+                if (int(float(val)) == int(float(m))):
+                    # If there is a match, set the output array at this index 
+                    # to the new value from the mask dictionary
+                    out_arr[idx] = v
 
         # Now push numpy array back to netcdf variable
         out_var[:] = out_arr[:]
