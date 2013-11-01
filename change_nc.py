@@ -103,29 +103,6 @@ def get_options(argv):
         return False
 
 
-"""
-def read_mask_values(change_tbl):
-    Reads the CSV file change_tbl, skipping comment lines (beginning with #)
-    collects mask values into a list, indexed by the mask ids
-    try:
-        f = open(change_tbl, 'r')
-        mask_csv = csv.reader(f, delimiter=',')
-        mask_dict={}
-        mask_cnt = 0
-        for ln in mask_csv:
-            if not ln[0].startswith('#'):
-                mask_dict[ln[0]]=ln[1]
-                mask_cnt += 1
-    
-    except IOError, e:
-        print ("Changes table file not available: "+str(e))
-        return False
-
-    print "Obtained %s mask variables" % str(mask_cnt)
-    return mask_dict
-"""
-
-
 def change_values(in_file, out_file, mask_id, mask_var, new_val, change_var):
     """
     First do a check on the nc files.
