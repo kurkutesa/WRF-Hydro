@@ -385,7 +385,8 @@ def get_latest_datadir():
   # First read existing timestamp from last timestamp file
   try:
     f = open(ts_file,"r+")
-    last_ts = float(f.readline())
+    # convert timestamp to int. We don't care about fractions of second
+    last_ts = int(float(f.readline()))
 
   except IOError as e:
   # Can't get a value from the last timesatmp file. Assume 0
@@ -399,7 +400,7 @@ def get_latest_datadir():
     if os.path.isdir(os.path.join(in_path,d)):
       #logging.debug("Trying path: %s", os.path.join(in_path,d))
       try:
-        ts = os.path.getmtime(os.path.join(in_path,d,data_file))
+        ts = int(os.path.getmtime(os.path.join(in_path,d,data_file)))
         # Compare timestamp for each frxst file in each subdir 
         # with the value from the last timestamp file
         if ts > last_ts:
