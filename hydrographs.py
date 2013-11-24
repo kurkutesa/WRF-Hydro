@@ -259,11 +259,13 @@ def create_graph(prob, num, disch, hrs, dt):
   """
   global out_path
   global out_pref
+  # Make a name for the date-specific target directory
+  out_dir = os.path.join(out_path, dt) 
   # Make sure target directory exists
   try:
-    os.makedirs(out_path)
+    os.makedirs(out_dir)
   except OSError:
-    if os.path.exists(out_path):
+    if os.path.exists(out_dir):
       pass
     else:
       raise
@@ -297,7 +299,7 @@ def create_graph(prob, num, disch, hrs, dt):
   ax = fig.add_subplot(111)
   ax.xaxis_date() 
   plt.setp(ax.get_xticklabels(), rotation=30, fontsize=7)
-  outpng=os.path.join(out_path,out_pref + stnum + ".png")
+  outpng=os.path.join(out_dir,out_pref + stnum + ".png")
   plt.savefig(outpng)
 
 
