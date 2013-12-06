@@ -71,7 +71,7 @@ def send_alerts():
 		sql = 	"SELECT h.station_name, m.max_flow, to_char(m.max_flow_ts,'DD-MM-YYYY HH24:MI') "
 		sql += 	" FROM max_flows AS m JOIN hydro_stations AS h ON m.id=h.id "
 		sql +=	" WHERE h.reshut_num IN (SELECT reshut_num FROM access WHERE user_id=%s)"
-		sql +=	" AND m.flow_level >= %s;"
+		sql +=	" AND m.flow_level >= %s AND h.active='t';"
 		data = (u[4], u[3])
 		curs.execute(sql, data)
 		stations = curs.fetchall()
