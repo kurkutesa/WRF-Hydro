@@ -142,9 +142,8 @@ head -6 ascii/geo_em_hgt.asc
 # NODATA_value  -9999
 
 # Import the altered ASCII grid into GRASS
-# Use the -e flag to set current region to the hgt raster, 
 # and -o is necessary since the ASCII raster has no CRS definition
-r.in.gdal -e -o ascii/geo_em_hgt.asc out=hgt
+r.in.gdal -o ascii/geo_em_hgt.asc out=hgt
 
 # Reproject the stations vector points layer
 v.proj input=stations location=WGS84 mapset=Research output=stations
@@ -177,7 +176,7 @@ r.proj input=hydrosheds_dem location=WGS84 mapset=Research output=dem
 # (set color ramps for display)
 r.colors hgt rule=grey
 r.colors dem rule=srtm
-# Again Set region to the extent of the new dem, 
+# Now Set region to the extent of the new dem for the duration of the analysis 
 # and verify that the resolution is 100m !
 g.region -p rast=hgt
 g.region -p res=100
@@ -218,19 +217,19 @@ g.remove vect=connectors
 # and do UPDATE queries to upload all additional attribute columns to the snapped_stations data table
 sqlite3 ~/geodata/grass/WRF_LCC/Research/sqlite/sqlite.db
 # The following commands are entered at the sqlite prompt 
-sqlite> ALTER TABLE snapped_stations ADD COLUMN staton_num INTEGER;
+sqlite> ALTER TABLE snapped_stations ADD COLUMN station_num INTEGER;
 sqlite> ALTER TABLE snapped_stations ADD COLUMN station_name varchar(64);
 sqlite> ALTER TABLE snapped_stations ADD COLUMN latitude double precision;
 sqlite> ALTER TABLE snapped_stations ADD COLUMN longitude double precision;
 sqlite> ALTER TABLE snapped_stations ADD COLUMN reshut_num integer;
 sqlite> ALTER TABLE snapped_stations ADD COLUMN reshut_nam varchar(32);
 sqlite> ALTER TABLE snapped_stations ADD COLUMN owner varchar(16);
-sqlite> UPDATE snapped_stations SET staton_num=(SELECT stat_num FROM combined_stations WHERE id=snapped_stations.station_id);
-sqlite> UPDATE snapped_stations SET station_name=(SELECT stat_name FROM combined_stations WHERE id=snapped_stations.station_id);
+sqlite> UPDATE snapped_stations SET station_num=(SELECT stat_num FROM stations WHERE id=snapped_stations.station_id);
+sqlite> UPDATE snapped_stations SET station_name=(SELECT stat_name FROM stations WHERE id=snapped_stations.station_id);
 # No need to update longitude and latitude - we get those values *after* projecting back to WGS84 Lon/Lat CRS
-sqlite> UPDATE snapped_stations SET reshut_num=(SELECT reshut_num FROM combined_stations WHERE id=snapped_stations.station_id);
-sqlite> UPDATE snapped_stations SET reshut_nam=(SELECT reshut_nam FROM combined_stations WHERE id=snapped_stations.station_id);
-sqlite> UPDATE snapped_stations SET owner=(SELECT owner FROM combined_stations WHERE id=snapped_stations.station_id);
+sqlite> UPDATE snapped_stations SET reshut_num=(SELECT reshut_num FROM stations WHERE id=snapped_stations.station_id);
+sqlite> UPDATE snapped_stations SET reshut_nam=(SELECT reshut_nam FROM stations WHERE id=snapped_stations.station_id);
+sqlite> UPDATE snapped_stations SET owner=(SELECT owner FROM stations WHERE id=snapped_stations.station_id);
 sqlite> select * from snapped_stations;
 sqlite> .q
 
