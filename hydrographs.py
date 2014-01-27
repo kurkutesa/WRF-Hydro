@@ -68,51 +68,50 @@ def send_alerts():
     #logging.info("Sending alert to User: %s with ID: %s at: %s for return period %s" ,u[0], u[4], u[1], u[3])
     # For each user, find the hydrographs she has access to, 
     # with return rate above her requested level
-		sql = 	"SELECT h.station_name, m.max_flow, to_char(m.max_flow_ts,'DD-MM-YYYY HH24:MI') "
-		sql += 	" FROM max_flows AS m JOIN hydro_stations AS h ON m.id=h.id "
-		sql +=	" WHERE h.reshut_num IN (SELECT reshut_num FROM access WHERE user_id=%s)"
-		sql +=	" AND m.flow_level >= %s;"
-		data = (u[4], u[3])
-		curs.execute(sql, data)
-		stations = curs.fetchall()
-		alert_count = curs.rowcount
-		if alert_count == 0:
-			continue
-
-		logging.info ("Found %s stations with alert for user %s ." % (alert_count, str(u[1])))
+    sql = 	"SELECT h.station_name, m.max_flow, to_char(m.max_flow_ts,'DD-MM-YYYY HH24:MI') "
+    sql += 	" FROM max_flows AS m JOIN hydro_stations AS h ON m.id=h.id "
+    sql +=	" WHERE h.reshut_num IN (SELECT reshut_num FROM access WHERE user_id=%s)"
+    sql +=	" AND m.flow_level >= %s AND h.active='t';"
+    data = (u[4], u[3])
+    curs.execute(sql, data)
+    stations = curs.fetchall()
+    alert_count = curs.rowcount
+    if alert_count == 0:
+      continue
+    
+    logging.info ("Found %s stations with alert for user %s ." % (alert_count, str(u[1])))
 	
     # Setup smtp connection
-		svr = smtplib.SMTP(smtp_server, smtp_port)
-		sendfrom = 'micha@arava.co.il'
-		rcptto = u[1]
-
-		# Start constructing email message
-		fh = open('alert_header.txt','r')
-		f = open('alert_msg.txt','r')
-		ff= open('alert_footer.txt','r')
-		body_text = fh.read()
-		body_text += "שלום %s :" % str(u[0])
-		body_text += f.read()
-		for h in stations:
-			#logging.info("ALerting: %s for station: %s. Max Flow: %s",u[0], h[0], h[1])
-			body_text += "<tr><td>%s</td><td style=\"text-align:center;\">%s</td><td style=\"text-align:center;\" dir=ltr>%s</td></tr>" % ( str(h[0]), str(h[1]), str(h[2]) )
+    svr = smtplib.SMTP(smtp_server, smtp_port)
+    sendfrom = 'micha@arava.co.il'
+    rcptto = u[1]
+    # Start constructing email message
+    fh = open('alert_header.txt','r')
+    f = open('alert_msg.txt','r')
+    ff= open('alert_footer.txt','r')
+    body_text = fh.read()
+    body_text += "שלום %s :" % str(u[0])
+    body_text += f.read()
+    for h in stations:
+    #logging.info("ALerting: %s for station: %s. Max Flow: %s",u[0], h[0], h[1])
+      body_text += "<tr><td>%s</td><td style=\"text-align:center;\">%s</td><td style=\"text-align:center;\" dir=ltr>%s</td></tr>" % ( str(h[0]), str(h[1]), str(h[2]) )
     
-		body_text += ff.read()
-		msg = MIMEText(body_text, 'html')
-		msg['From'] = sendfrom
-		msg['To'] = rcptto
-		msg['Subject'] = "WRF-Hydro alert"
+    body_text += ff.read()
+    msg = MIMEText(body_text, 'html')
+    msg['From'] = sendfrom
+    msg['To'] = rcptto
+    msg['Subject'] = "WRF-Hydro alert"
     # message is ready, perform the send
-		try:
-			svr.ehlo()
-			svr.starttls()
-			svr.ehlo()
-			svr.login(smtp_user,smtp_pass)
-			svr.sendmail(sendfrom, rcptto, msg.as_string())
-		except SMTPException, e:
-			logging.error("SMTP failed: %s" % str(e))
-		finally:
-			svr.quit()
+    try:
+      svr.ehlo()
+      svr.starttls()
+      svr.ehlo()
+      svr.login(smtp_user,smtp_pass)
+      svr.sendmail(sendfrom, rcptto, msg.as_string())
+    except smtplib.SMTPException, e:
+      logging.error("SMTP failed: %s" % str(e))
+    finally:
+      svr.quit()
 
 
 
@@ -209,7 +208,7 @@ def update_maxflow(id, mf, mt):
   Update the database table "max_flows" with the maximum flow
   for a station id (passed as parameters)
   Requery to get the flow level value (set by a trigger)
-	Return the flow level value
+  Return the flow level value
   """
   # First get configurations
   global host
@@ -254,53 +253,53 @@ def update_maxflow(id, mf, mt):
 
 
 def create_graph(prob, num, disch, hrs, dt):
-  """ 
-  Creates a hydrograph (png image file) using the array of discharges from the input parameter
-  """
-  global out_path
-  global out_pref
-  # Make a name for the date-specific target directory
-  out_dir = os.path.join(out_path, dt) 
-  # Make sure target directory exists
-  try:
-    os.makedirs(out_dir)
-  except OSError:
-    if os.path.exists(out_dir):
-      pass
+    """ 
+    Creates a hydrograph (png image file) using the array of discharges from the input parameter
+     """
+    global out_path
+    global out_pref
+    # Make a name for the date-specific target directory
+    out_dir = os.path.join(out_path, dt)
+    # Make sure target directory exists
+    try:
+        os.makedirs(out_dir)
+    except OSError:
+        if os.path.exists(out_dir):
+            pass
+        else:
+            raise
+
+    logging.info("Creating graph for station num: %s",str(num))
+    fig = plt.figure()
+    plt.xlabel('Hours')
+    plt.ylabel('Discharge (m3/sec)')
+    stnum=str(num)
+    plt.suptitle('Station Number: '+ stnum, fontsize=18)
+    prob_str="Return period: "+prob
+    plt.title(prob_str,size=14)
+    plt.figtext(0.13, 0.87, "Initialized: "+dt, size="medium", weight="bold", backgroundcolor="#EDEA95")
+    ln = plt.plot(hrs,disch)
+    # Get max discharge to size the graph
+    try:
+        dis_max = max(disch)
+    except:
+        dis_max = 0
+
+    if dis_max <= 10:
+        y_max = 10
     else:
-      raise
-
-  logging.info("Creating graph for station num: %s",str(num))
-  fig = plt.figure()
-  plt.xlabel('Hours')
-  plt.ylabel('Discharge (m3/sec)')
-  stnum=str(num)
-  plt.suptitle('Station Number: '+ stnum, fontsize=18)
-  prob_str="Return period: "+prob
-  plt.title(prob_str,size=14)
-  plt.figtext(0.13, 0.87, "Initialized: "+dt, size="medium", weight="bold", backgroundcolor="#EDEA95")
-  ln = plt.plot(hrs,disch)
-  # Get max discharge to size the graph
-  try:
-    dis_max = max(disch)
-  except:
-    dis_max = 0
-
-  if dis_max <= 10:
-    y_max = 10
-  else:
-    y_max = 1.05*dis_max
+        y_max = 1.05*dis_max
 	
-  plt.ylim(ymin=0, ymax=y_max)
-  plt.setp(ln, linewidth=3, color='b')
-  # Setup date format for X axis
-  xfmt = md.DateFormatter('%d-%m-%Y %H:%M')
-  plt.gca().xaxis.set_major_formatter(xfmt)
-  ax = fig.add_subplot(111)
-  ax.xaxis_date() 
-  plt.setp(ax.get_xticklabels(), rotation=30, fontsize=7)
-  outpng=os.path.join(out_dir,out_pref + stnum + ".png")
-  plt.savefig(outpng)
+    plt.ylim(ymin=0, ymax=y_max)
+    plt.setp(ln, linewidth=3, color='b')
+    # Setup date format for X axis
+    xfmt = md.DateFormatter('%d-%m-%Y %H:%M')
+    plt.gca().xaxis.set_major_formatter(xfmt)
+    ax = fig.add_subplot(111)
+    ax.xaxis_date() 
+    plt.setp(ax.get_xticklabels(), rotation=30, fontsize=7)
+    outpng=os.path.join(out_dir,out_pref + stnum + ".png")
+    plt.savefig(outpng)
 
 
 
@@ -330,42 +329,45 @@ def do_loop(data_rows):
     dis_times=[]
     max_disch=0
     if (len(datai) == 0):
+      logging.warning("No data for id: %s", str(id))
       exit
     else:
       # Grab the date for use later in the graph (needed only once)
       date_str = datai[1][1]
       #logging.debug("Data for date: ",date_str)
+      max_disch_time = datai[1][dt_str_col]
 
       for j in range(len(datai)):
       # Collect the date strings and discharge from this subset of data
       # Get hour and discharge column from config
-        hr = int(datai[j][hr_col])/3600
+        hr = (int(datai[j][hr_col]))/3600
         dis_time = matplotlib.dates.datestr2num(datai[j][dt_str_col])
       # Limit graph from minimum hour (from config) to max hour 
-        if (hr>min_hr and hr<=max_hr):
-          hrs.append(hr)
-          dis_times.append(dis_time)
+      # Never mind this 48 hour check, depend only on the length of the run
+      #if (hr>min_hr and hr<=max_hr):
+        hrs.append(hr)
+        dis_times.append(dis_time)
         # Get "disch_col" column: has the discharge in cubic meters
-          dis = float(datai[j][disch_col])
-          disch.append(dis)
-          # Keep track of the maximum discharge and time for this hydro station
-          if dis>max_disch:
-            max_disch = dis
-            max_disch_time = datai[j][dt_str_col]
+        dis = float(datai[j][disch_col])
+        disch.append(dis)
+        # Keep track of the maximum discharge and time for this hydro station
+        if dis>max_disch:
+          max_disch = dis
+          max_disch_time = datai[j][dt_str_col]
 
       # Now use the max_disch to update the maxflows database table
       # and get back the flow_level for this station
       level = update_maxflow(int(id), max_disch, max_disch_time)
 
-      # logging.debug( "Using: %s", str(len(hrs)), " data points.")
-      #	logging.debug( "Hour: %s", str(hr),  "Disch: %s", str(dis))
+      logging.debug( "Using: %s", str(len(hrs)), " data points.")
+      #logging.debug( "Hour: %s", str(hr),  "Disch: %s", str(dis))
       # Continue ONLY if level actually has value
       if (level is None):
         logging.warning( "No station with id: %s",str(id))
         exit
       else:
         station_num = get_station_num(int(id))
-        #logging.debug( "Station num: %s", str(station_num), " has max discharge: %s", str(max_disch))
+        logging.debug( "Station num: %s has max discharge: %s", str(station_num), str(max_disch))
         # Find which return period this max flow is in
         prob_str = probability_period(level) 
         # Create the graph
@@ -387,7 +389,7 @@ def get_latest_datadir():
   # First read existing timestamp from last timestamp file
   try:
     f = open(ts_file,"r+")
-    # convert timestamp to int. We don't care about fractions of second
+    # Convert timestamp to int. We don't care about fractions of seconds
     last_ts = int(float(f.readline()))
 
   except IOError as e:
