@@ -1,5 +1,8 @@
-Description: Python script to create hydrographs from hourly flow data
+Description: Python scripts for handling WRF-Hydro data
+	* to create hydrographs from hourly flow data
+	* to examine gis_hires netCDF files
+
 Author: Micha Silver
 Changelog:
   2013-09-21  first upload
-
+  2014-07-22	first version of verify_hires.py 

@@ -47,7 +47,7 @@ fr_cnt	= 0
 print('ID\tStream Order\tLongitude\tLatitude\tElevation')
 details=[]
 for idx, fr_val in np.ndenumerate(fr_arr):
-	if (fr_val == 0) :
+	if (fr_val >= 0) :
 		fr_cnt += 1
 		str_val = str_arr[idx[0], idx[1]]
 		lon_val = lon_arr[idx[0], idx[1]]
