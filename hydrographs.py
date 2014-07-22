@@ -68,7 +68,6 @@ def send_alerts():
     #logging.info("Sending alert to User: %s with ID: %s at: %s for return period %s" ,u[0], u[4], u[1], u[3])
     # For each user, find the hydrographs she has access to, 
     # with return rate above her requested level
-<<<<<<< HEAD
     sql = 	"SELECT h.station_name, m.max_flow, to_char(m.max_flow_ts,'DD-MM-YYYY HH24:MI') "
     sql += 	" FROM max_flows AS m JOIN hydro_stations AS h ON m.id=h.id "
     sql +=	" WHERE h.reshut_num IN (SELECT reshut_num FROM access WHERE user_id=%s)"
@@ -81,20 +80,6 @@ def send_alerts():
       continue
     
     logging.info ("Found %s stations with alert for user %s ." % (alert_count, str(u[1])))
-=======
-		sql = 	"SELECT h.station_name, m.max_flow, to_char(m.max_flow_ts,'DD-MM-YYYY HH24:MI') "
-		sql += 	" FROM max_flows AS m JOIN hydro_stations AS h ON m.id=h.id "
-		sql +=	" WHERE h.reshut_num IN (SELECT reshut_num FROM access WHERE user_id=%s)"
-		sql +=	" AND m.flow_level >= %s AND h.active='t';"
-		data = (u[4], u[3])
-		curs.execute(sql, data)
-		stations = curs.fetchall()
-		alert_count = curs.rowcount
-		if alert_count == 0:
-			continue
-
-		logging.info ("Found %s stations with alert for user %s ." % (alert_count, str(u[1])))
->>>>>>> e0b44ee30648b4beb95e9537a4a4878c396d9781
 	
     # Setup smtp connection
     svr = smtplib.SMTP(smtp_server, smtp_port)
@@ -374,7 +359,7 @@ def do_loop(data_rows):
       # and get back the flow_level for this station
       level = update_maxflow(int(id), max_disch, max_disch_time)
 
-      logging.debug( "Using: %s", str(len(hrs)), " data points.")
+      logging.debug( "Using: %s data points.", str(len(hrs)))
       #logging.debug( "Hour: %s", str(hr),  "Disch: %s", str(dis))
       # Continue ONLY if level actually has value
       if (level is None):
@@ -397,7 +382,7 @@ def get_latest_datadir():
   stored in the "last_timestamp" file
   Returns the newer data directory
   """
-  global in_path
+  global data_path
   global ts_file
   global data_file
 
@@ -415,11 +400,11 @@ def get_latest_datadir():
 
   new_ts = None
   new_data_dir = None
-  for d in os.listdir(in_path):
-    if os.path.isdir(os.path.join(in_path,d)):
-      #logging.debug("Trying path: %s", os.path.join(in_path,d))
+  for d in os.listdir(data_path):
+    if os.path.isdir(os.path.join(data_path,d)):
+      #logging.debug("Trying path: %s", os.path.join(data_path,d))
       try:
-        ts = int(os.path.getmtime(os.path.join(in_path,d,data_file)))
+        ts = int(os.path.getmtime(os.path.join(data_path,d,data_file)))
         # Compare timestamp for each frxst file in each subdir 
         # with the value from the last timestamp file
         if ts > last_ts:
@@ -458,10 +443,10 @@ def parse_frxst(dirname):
   Add a column "datestr" wihich concatenates the date and hour
   Return the list
   """
-  global in_path
+  global data_path
   global data_file
 
-  input_file = os.path.join(in_path, dirname, data_file)
+  input_file = os.path.join(data_path, dirname, data_file)
   data_rows=[]
   try:
     f = open(input_file, 'rb')
@@ -577,15 +562,31 @@ def upload_model_timing(data_rows):
 def copy_to_archive(datadir):
   """ 
   Copies the latest directory to the website archive directory
+  Also move the latest rainfall data files to the web archive
   """
   global web_archive
-  destdir = os.path.join(web_archive,datadir)
-  srcdir  = os.path.join(in_path, datadir)  
+  global data_path
+  global rain_path
+
+  destdatadir   = os.path.join(web_archive,'forecast',datadir)
+  srcdatadir    = os.path.join(data_path, datadir)  
+  destraindir   = os.path.join(web_archive,'rainfall')
+  srcraindir    = rain_path
+
   try:
-    shutil.copytree(srcdir, destdir)
-    logging.info("Data files copied to: "+destdir)
+    shutil.copytree(srcdatadir, destdatadir)
+    logging.info("Data files copied to: "+destdatadir)
   except (IOError, os.error) as e:
     logging.error("Error %s", str(e)+" from: "+datadir+" to: "+web_archive)
+  
+  try:
+    for root, dirs, fnames in os.walk(srcraindir):
+        for f in fnames:
+            shutil.move(os.path.join(srcraindir,f), destraindir)
+            logging.info("Rain file %s copied to: %s" % (f,destraindir))
+
+  except (IOError, os.error) as e:
+    logging.error("Error %s", str(e)+" from: "+srcraindir+" to: "+destraindir)
 
 
 
@@ -613,7 +614,7 @@ def main():
       upload_flow_data(data_rows)
       upload_model_timing(data_rows)
       copy_to_archive(datadir)
-      send_alerts()
+#      send_alerts()
 
   logging.info("*** Hydrograph Process completed ***")
   # end of main()
@@ -635,7 +636,8 @@ if __name__ == "__main__":
   min_hr = config.getint("General", "min_hr")
   max_hr = config.getint("General","max_hr")
   hr_col = config.getint("General", "hr_col")
-  in_path = config.get("General", "in_path")
+  data_path = config.get("General", "data_path")
+  rain_path = config.get("General", "rain_path")
   disch_col = config.getint("General", "disch_col")
   dt_str_col = config.getint("General", "dt_str_col")
   ts_file = config.get("General", "timestamp_file")
