@@ -35,8 +35,8 @@
 # Revisions:	24/02/2014	export to Geotiff rather than ASCII ArcINFO format
 #               1/03/2014       shifted the sqlite update to an external sql file
 #               14/04/2013      removed all referenced to station_id
-#               18/04/2014      changed the vector to raster function which creates the frxst_pts raster
-#                               to use value 0 instead of the station_id            
+#               18/04/2014      changed the vector to raster function which creates the frxst_pts raster to use value 0 instead of the station_id            
+#		24/07/2014	threshold of r.watershed set to 250 (2.5 sq.km.)
 
 
 #---------------------------------------------------#
