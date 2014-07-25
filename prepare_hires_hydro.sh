@@ -48,7 +48,7 @@ export WORKDIR NETCDFDIR
 LCC_LOC=LCC
 WGS_LOC=WGS84
 WORK_MAPSET=IHS
-export WORKDIR NETCDFDIR WORK_MAPSET LCC_LOC WGS_LOC
+export WORK_MAPSET LCC_LOC WGS_LOC
 #
 #               Two GRASS Locations should be defined in advance: One referenced to EPSG:4326 (WGS84 Long/Lat)
 #               and the second in Lambert Conformal Conic, with the parameters:
@@ -129,8 +129,6 @@ r.mask -r eurasia_mask
 #---------------------------------------------------#
 # This LOCATION should be defined to match the LCC projection used in your WRF model
 g.mapset --verbose map="$WORK_MAPSET" location="$LCC_LOC"
-# Exit GRASS and restart in new Lambert Conformal Conic LOCATION.
-# This LOCATION should be defined to match the LCC projection used in your WRF model
 # Projection definition:
 g.proj -p
 #-PROJ_INFO-------------------------------------------------
@@ -170,7 +168,7 @@ head -6 geo_em_hgt.asc
 # ncols        120
 # nrows        222
 #xllcenter    -21042.6091447204
-#yllcenter    -329358.925863749
+#yllcenter    -326070.772386501
 #cellsize     3000.000000000000
 # NODATA_value  -9999
 
@@ -182,8 +180,6 @@ cd $WORKDIR
 
 # Reproject the stations vector points layer
 v.proj --o input=stations location=$WGS_LOC mapset=$WORK_MAPSET output=stations
-# Reproject the stations vector points layer
-v.proj input=stations location=WGS84 mapset=Research output=stations
 
 # Reproject the raster; first use the r.proj -g flag to set the necessary extents...
 g.region `r.proj -g input=hydrosheds_dem location="$WGS_LOC" mapset="$WORK_MAPSET"`
@@ -350,12 +346,9 @@ v.out.ascii -c --o input=snapped_stations out="$WORKDIR"/shp/snapped_stations.cs
 v.out.ogr -e -s snapped_stations dsn="$WORKDIR"/shp/snapped_stations.shp type=point
 v.out.ogr -e -s station_catchments dsn="$WORKDIR"/shp/station_catchments.shp type=area
 v.out.ogr -e -s streams dsn="$WORKDIR"/shp/streams.shp type=line
-v.to.rast --o input=station_catchments output=station_catchments type=area use=attr attrcolumn=station_id
-g.remove rast=catch
-# *** The resulting raster "station_catchments" is the basn_mask variable *** #
 
 #-----------------------------------------------------#
 ###  Finished. Now run the create_netcdf.py script  ###
 #-----------------------------------------------------#
 # i.e.
-# python "$WORKDIR"/create_hires_v2.py -d 3600 6660 $NETCDFDIR/gis_hires.nc "$WORKDIR"/gtiff
+# python "$WORKDIR"/scripts/Thomas/create_hires_v2.py -d 3600 6660 $NETCDFDIR/gis_hires.nc "$WORKDIR"/gtiff
