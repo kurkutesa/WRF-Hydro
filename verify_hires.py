@@ -41,10 +41,11 @@ lat_arr	= np.flipud(nc.variables['LATITUDE'])
 lon_arr	= np.flipud(nc.variables['LONGITUDE'])
 x_arr	= np.flipud(nc.variables['x'])
 y_arr	= np.flipud(nc.variables['y'])
+bm_arr	= np.flipud(nc.variables['basn_mask'])
 fr_cnt	= 0
 
 # Loop thru the frxst_pts array
-print('ID\tStream Order\tLongitude\tLatitude\tElevation')
+print('ID\tStream Order\tLongitude\tLatitude\tElevation\tBasin Mask')
 details=[]
 for idx, fr_val in np.ndenumerate(fr_arr):
 	if (fr_val >= 0) :
@@ -53,14 +54,15 @@ for idx, fr_val in np.ndenumerate(fr_arr):
 		lon_val = lon_arr[idx[0], idx[1]]
 		lat_val = lat_arr[idx[0], idx[1]]
 		topo_val = topo_arr[idx[0], idx[1]]
-		print ('%s\t%s\t%s\t%s\t%s' % (fr_cnt, str_val, lon_val, lat_val, topo_val))
+		basn_val = bm_arr[idx[0], idx[1]]
+		print ('%s\t%s\t%s\t%s\t%s\t%s' % (fr_cnt, str_val, lon_val, lat_val, topo_val, basn_val))
 		details.append([fr_cnt,str_val,lon_val,lat_val,topo_val])
 
 # Now do the output
 out_f = open(outfile, 'w')
-out_f.write('ID,Stream Order,Longitude,Latitude,Elevation\n')
+out_f.write('ID,Stream Order,Longitude,Latitude,Elevation,Basin Mask\n')
 for i in range(len(details)):
-	out_f.write('%s,%s,%s,%s,%s\n' % (details[i][0], details[i][1],details[i][2],details[i][3],details[i][4]))
+	out_f.write('%s,%s,%s,%s,%s\n' % (details[i][0], details[i][1],details[i][2],details[i][3],details[i][4],details[i][5]))
 out_f.close()		
 #print "{0:0>3}".format(tile_max_ln), "{0:0>3}".format(tile_min_ln)
 #print "Tile Max/Min longitude, Max/Min latitude: %s, %s, %s, %s" % ("{0:0>3}".format(tile_max_ln), "{0:0>3}".format(tile_min_ln), tile_max_lt, tile_min_lt)
