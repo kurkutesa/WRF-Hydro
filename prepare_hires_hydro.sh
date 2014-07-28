@@ -272,7 +272,7 @@ g.remove vect=connectors
 
 # Convert snapped_stations to raster
 # Set the pixel value at each station (pour point) to zero, as required by WRF-Hydro
-v.to.rast --o input=snapped_stations output=frxst_pts use=val value=0
+v.to.rast --o input=snapped_stations output=frxst_pts use=col attrcol=stat_num
 # *** The result raster "frxst_pts" is the frxst_pts variable *** #
 
 
