@@ -37,7 +37,7 @@
 #               14/04/2013      removed all referenced to station_id
 #               18/04/2014      changed the vector to raster function which creates the frxst_pts raster to use value 0 instead of the station_id            
 #		24/07/2014	threshold of r.watershed set to 250 (2.5 sq.km.)
-
+#		29/07/2014	Added script to fill sinks on the DEM
 
 #---------------------------------------------------#
 ### Environment variables
@@ -200,8 +200,15 @@ g.region -p -a res=100
 #cells:      170912616
 
 # ... and do the reprojection
-r.proj input=hydrosheds_dem location="$WGS_LOC" mapset="$WORK_MAPSET" output=dem
-#  ***  The result "dem" raster is the TOPOGRAPHY variable *** #
+r.proj input=hydrosheds_dem location="$WGS_LOC" mapset="$WORK_MAPSET" output=dem_tmp
+# Preprocess the dem to fill 1 cell errors
+r.hydrodem --o input=dem_tmp output=dem
+g.remove rast=dem_tmp
+# This dem will be used for r.watershed 
+# Now process again to fill ALL sinks
+r.hydrodem -a --o input=dem output=dem_fill
+#  ***  The result "dem_fill" raster is the TOPOGRAPHY variable *** #
+
 
 # Display the hgt raster together with the dem and stations point layer 
 # to insure that everything is properly registered 
@@ -210,6 +217,7 @@ r.proj input=hydrosheds_dem location="$WGS_LOC" mapset="$WORK_MAPSET" output=dem
 # (set color ramps for display)
 r.colors hgt rule=grey
 r.colors dem rule=srtm
+r.colors dem_fill rule=srtm
 # Now Set region to the extent of the new dem for the duration of the analysis 
 # and verify that the resolution is 100m !
 g.region -p rast=hgt
@@ -305,7 +313,7 @@ r.mapcalc --o "ovrough = 1"
 #-------------------------------------------#
 # Export rasters to GTiff for use in create_netcdf.py script
 mkdir -p "$WORKDIR"/gtiff
-r.out.gdal -c --o -f in=dem out="$WORKDIR"/gtiff/TOPOGRAPHY.tif format=GTiff type=Int16 createopt="COMPRESS=LZW" nodata=-9999
+r.out.gdal -c --o -f in=dem_fill out="$WORKDIR"/gtiff/TOPOGRAPHY.tif format=GTiff type=Int16 createopt="COMPRESS=LZW" nodata=-9999
 r.out.gdal -c --o in=f_dir_arc out="$WORKDIR"/gtiff/FLOWDIRECTION.tif format=GTiff type=Int16 createopt="COMPRESS=LZW" nodata=-9999 
 # Use Int32 datatype for streams, there may be more than 32767 stream reaches!
 r.out.gdal -c --o in=str out="$WORKDIR"/gtiff/CHANNELGRID.tif format=GTiff type=Int32 createopt="COMPRESS=LZW" 
