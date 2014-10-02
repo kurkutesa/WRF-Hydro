@@ -5,6 +5,15 @@
 # Author:	Micha Silver
 # Date:		2/10/2014
 # Parameters:	
+inputdir=$1
+outputdir=$2
+if [[ -z $inputdir ]]; then
+	echo "Syntax $0 <directory of csv files for input> <directory for png output>"
+	exit
+fi  
+if [[ -z $outputdir ]]; then
+	outpurdir="."
+fi
 
 # Set up GRASS environment
 export GISBASE=/usr/lib/grass64
@@ -21,8 +30,8 @@ export GRASS_HEIGHT=600
 export GRASS_TRUECOLOR=TRUE
 
 # Get one input file and set region
-p=`ls $inputdir/precip*.txt | head 1`
-reg=`r.in.xyz -s -g input=${p} output=dummy fs=,`
+p=`ls $inputdir/precip*.txt | head -1`
+reg=`r.in.xyz -s -g input=${p} output=dummy fs=, |  awk '{print $1" "$2" "$3" "$4}'`
 g.region --q $reg
 # Also set resolution to 1/30 degree (about 3 km)
 g.region --q res=0.033
@@ -30,17 +39,20 @@ g.region --q res=0.033
 # Loop thru input directory
 for f in $inputdir/precip*.txt; do
 	precip_rast=`basename ${f} .txt`
-	r.in.xyz input=${f} output=$precip_rast fs=, method=mean
+	r.in.xyz --quiet --overwrite input=${f} output=$precip_rast fs=, method=mean
 	r.null $precip_rast setnull=0
-	r.colors $precip_rast rules=precip_color_rules
-	export GRASS_PNGFILE=${precip_rast}.png
-	d.mon start=PNG
+	r.colors --quiet $precip_rast rules=precip_color_rules
+	export GRASS_PNGFILE=${outputdir}/${precip_rast}.png
+	d.mon --quiet start=PNG
 	# Add layers
-	d.rast $precip_rast
-	d.vect water_bodies type=boundary color="160:200:225"
-	d.vect border_il type=boundary
-	d.vect mideast_cities type=point display=shape,attr icon=basic/point size=8 color=orange attrcol=name lcolor=orange lsize=6
-	d.mon stop=PNG
+	d.rast --quiet $precip_rast
+	d.vect --quiet water_bodies@precip type=boundary color="160:200:225"
+	d.vect --quiet border_il@precip type=boundary
+	d.vect --quiet mideast_cities@precip type=point display=shape,attr icon=basic/point size=8 color=orange attrcol=name lcolor=orange lsize=6
+	title=`echo $precip_rast | sed s'/precip_csv_//'`
+	d.text.freetype --quiet -b at="4,96" text="${title}" size=3 color=black bgcolor=white
+	d.legend -s --q map=${precip_rast} at="2,25,88,95" range=1,100
+	d.mon --quiet stop=PNG
 done
 
 # run GRASS' cleanup routine
@@ -48,4 +60,7 @@ $GISBASE/etc/clean_temp
 
 # remove session tmp directory:
 rm -rf /tmp/grass6-$USER-$GIS_LOCK
+
+# Create animation
+convert -delay 5 -loop 0 -dispose Background ${outputdir}/*.png ${outputdir}/$precip_rast_anim.gif
 
