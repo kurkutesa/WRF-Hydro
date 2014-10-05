@@ -12,16 +12,16 @@ if [[ -z $inputdir ]]; then
 	exit
 fi  
 if [[ -z $outputdir ]]; then
-	outpurdir="."
+	outputdir="."
 fi
 
 # Set up GRASS environment
-export GISBASE=/usr/lib/grass64
+export GISBASE=/usr/lib64/grass
 export PATH=$PATH:$GISBASE/bin:$GISBASE/scripts
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$GISBASE/lib
 export GIS_LOCK=$$
 
-export GISDBASE=/home/micha/GIS/grass
+export GISDBASE=/home/ihs/grass
 export LOCATION_NAME=WGS84
 export MAPSET=precip
 #GRASS_GUI=wxpython
@@ -47,15 +47,17 @@ for f in $inputdir/precip*.txt; do
 	# Add layers
 	d.rast --quiet $precip_rast
 	d.vect --quiet water_bodies@precip type=boundary color="160:200:225"
-	d.vect --quiet border_il@precip type=boundary
+	d.vect --quiet border_il_wbank@precip type=boundary
+	d.vect --quiet basins@precip type=boundary color=brown
 	d.vect --quiet mideast_cities@precip type=point display=shape,attr icon=basic/point size=8 color=orange attrcol=name lcolor=orange lsize=6
 	title=`echo $precip_rast | sed s'/precip_csv_//'`
 	d.text.freetype --quiet -b at="4,96" text="${title}" size=3 color=black bgcolor=white
 	d.legend -s --q map=${precip_rast} at="2,25,88,95" range=1,100
 	d.mon --quiet stop=PNG
+	g.remove -f --quiet rast=${precip_rast}
 done
 
-# run GRASS' cleanup routine
+# run GRASS cleanup routine
 $GISBASE/etc/clean_temp
 
 # remove session tmp directory:
