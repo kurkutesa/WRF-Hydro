@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Author:   Micha Silver
-Version:  0.2
+Version:  0.3
 Description:  
   This routine reads a CSV file of flow rates for each of the hydrometer stations
   with hourly data for a period of 24 hours.
@@ -13,13 +13,16 @@ Description:
 Options:
 	Command line takes only one option: the directory containing hydrographs.conf (the config file)
 	all other configurations are in that file
+
+Updates:
+    20140920 - changed update_maxflows routine to use station_num instead of id
 """
 
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.dates as md
-import datetime 
+import datetime,tarfile 
 import numpy as np
 import os, csv, sys, errno, shutil
 import psycopg2
@@ -69,7 +72,7 @@ def send_alerts():
     # For each user, find the hydrographs she has access to, 
     # with return rate above her requested level
     sql = 	"SELECT h.station_name, m.max_flow, to_char(m.max_flow_ts,'DD-MM-YYYY HH24:MI') "
-    sql += 	" FROM max_flows AS m JOIN hydro_stations AS h ON m.id=h.id "
+    sql += 	" FROM max_flows AS m JOIN hydrostations AS h ON m.id=h.id "
     sql +=	" WHERE h.reshut_num IN (SELECT reshut_num FROM access WHERE user_id=%s)"
     sql +=	" AND m.flow_level >= %s AND h.active='t';"
     data = (u[4], u[3])
@@ -158,7 +161,7 @@ def get_stationid_list():
   try:
     conn = psycopg2.connect(conn_string)
     curs = conn.cursor()
-    sql = "SELECT id FROM hydro_stations WHERE active='t' UNION SELECT id FROM drain_points WHERE active='t'"
+    sql = "SELECT id FROM hydrostations WHERE active='t' UNION SELECT id FROM drain_points WHERE active='t'"
     curs.execute(sql)
     rows = curs.fetchall()
     return rows
@@ -186,7 +189,7 @@ def get_station_num(id):
   try:
     conn = psycopg2.connect(conn_string)
     curs = conn.cursor()
-    sql = "SELECT station_num FROM hydrograph_locations WHERE id= %s;" % id
+    sql = "SELECT station_num FROM hg_locations WHERE id= %s;" % id
     curs.execute(sql)
     row = curs.fetchone()
     if (curs.rowcount <1):
@@ -203,10 +206,10 @@ def get_station_num(id):
 
 
 
-def update_maxflow(id, mf, mt):
+def update_maxflow(num, mf, mt):
   """
   Update the database table "max_flows" with the maximum flow
-  for a station id (passed as parameters)
+  for a station_num (passed as parameters)
   Requery to get the flow level value (set by a trigger)
   Return the flow level value
   """
@@ -220,8 +223,8 @@ def update_maxflow(id, mf, mt):
   try:
     conn = psycopg2.connect(conn_string)
     curs = conn.cursor()
-    sql = "UPDATE max_flows SET max_flow=%s, max_flow_ts=%s WHERE id=%s;"
-    data = (mf, mt, id)
+    sql = "UPDATE max_flows SET max_flow=%s, max_flow_ts=%s WHERE station_num=%s;"
+    data = (mf, mt, num)
     #logging.debug("Executing: "+sql+data)
     curs.execute(sql, data)
     conn.commit()
@@ -232,8 +235,8 @@ def update_maxflow(id, mf, mt):
   # After update the flow level has been set in the db table (by a trigger)
   # Query for and return the flow level value
   try:
-    sql = "SELECT flow_level FROM max_flows WHERE id = %s"
-    data = (id,)
+    sql = "SELECT flow_level FROM max_flows WHERE station_num = %s"
+    data = (num,)
     curs.execute(sql, data)
     row = curs.fetchone()
     cnt = curs.rowcount
@@ -259,7 +262,8 @@ def create_graph(prob, num, disch, hrs, dt):
     global out_path
     global out_pref
     # Make a name for the date-specific target directory
-    out_dir = os.path.join(out_path, dt)
+
+    out_dir = os.path.join(out_path, dt[:10])
     # Make sure target directory exists
     try:
         os.makedirs(out_dir)
@@ -333,7 +337,7 @@ def do_loop(data_rows):
       exit
     else:
       # Grab the date for use later in the graph (needed only once)
-      date_str = datai[1][1]
+      date_str = datai[1][5]
       #logging.debug("Data for date: ",date_str)
       max_disch_time = datai[1][dt_str_col]
 
@@ -355,23 +359,86 @@ def do_loop(data_rows):
           max_disch = dis
           max_disch_time = datai[j][dt_str_col]
 
-      # Now use the max_disch to update the maxflows database table
-      # and get back the flow_level for this station
-      level = update_maxflow(int(id), max_disch, max_disch_time)
 
       logging.debug( "Using: %s data points.", str(len(hrs)))
-      #logging.debug( "Hour: %s", str(hr),  "Disch: %s", str(dis))
+      # Now use the max_disch to update the maxflows database table
+      # and get back the flow_level for this station
+      station_num = get_station_num(int(id))
       # Continue ONLY if level actually has value
-      if (level is None):
-        logging.warning( "No station with id: %s",str(id))
-        exit
-      else:
-        station_num = get_station_num(int(id))
-        logging.debug( "Station num: %s has max discharge: %s", str(station_num), str(max_disch))
+      try:
+          level = update_maxflow(int(station_num), max_disch, max_disch_time)
+          logging.debug( "Station num: %s has max discharge: %s", str(station_num), str(max_disch))
         # Find which return period this max flow is in
-        prob_str = probability_period(level) 
+          prob_str = probability_period(level) 
         # Create the graph
-        create_graph(prob_str, station_num, disch, dis_times, date_str)
+          create_graph(prob_str, station_num, disch, dis_times, date_str)
+      except:
+          logging.warning( "No station with id: %s",str(id))
+
+
+def get_latest_precipdir():
+    """
+    Scans the precip directory to get timestamp
+    finds the newest (if it is newer than the timestamp file)
+    returns the newest precip directory
+    """
+    global img_path
+    global ts_file
+    global precip_file
+
+  # First read existing timestamp from last timestamp file
+    try:
+        f = open(ts_file,"r+")
+    # Convert timestamp to int. We don't care about fractions of seconds
+        last_ts = int(float(f.readline()))
+
+    except IOError as e:
+    # Can't get a value from the last timesatmp file. Assume 0
+        logging.warning( "Can't access timestamp file: %s", e.strerror)
+        last_ts = 0
+        f = open(ts_file, "w")
+
+    new_precip_dir = None
+    for d in os.listdir(img_path):
+        if os.path.isdir(os.path.join(img_path,d)):
+            logging.debug("Trying path: %s", os.path.join(img_path,d,precip_file))
+            try:
+                ts = int(os.path.getmtime(os.path.join(img_path,d,precip_file)))
+            # Compare timestamp for each frxst file in each subdir 
+            # with the value from the last timestamp file
+                if ts > last_ts:
+                    new_precip_dir = d
+    
+            except OSError as e:
+                logging.warning("Precipitation file in subdir: %s not yet available. %s", d, e.strerror)
+
+  # If there is no newer frxst file, return None
+  # otherwise return the subdir of the new data
+  # and write out the new timestamp to the last timestamp file (for next time)
+    if new_precip_dir is None:
+        logging.info("No new data file")
+        f.close()
+        return None
+
+    else:
+        f.close()
+        logging.info("Using precipitation directory: %s", new_precip_dir)
+    
+    return new_precip_dir
+
+
+def parse_precip_data(new_precip_dir):
+    """
+    Extract the set of precip csv files from tar.gz 
+    into the same directory
+    """
+    target = os.path.join(img_path, new_precip_dir)
+    p = tarfile.open(os.path.join(target,precip_file))
+    p.extractall(path=target)
+    p.close()
+    cnt = len([f for f in os.listdir(target) 
+             if f.endswith('.txt') and os.path.isfile(os.path.join(target, f))])
+    return cnt
 
 
 
@@ -512,10 +579,10 @@ def upload_flow_data(data_rows):
 
 def upload_model_timing(data_rows):
   """
-  Grab the init date-time of the gfc data (from the first row of data_rows)
+  Grab the init date-time of the gfs data (from the first row of data_rows)
   and the time the model completed (from the last_timestamp file)
   INSERT a row into the model_timing database table with three timestamps:
-  gfc init, wrf completed, and graphs available
+  gfs init, wrf completed, and graphs available
   """
   global ts_file
   global host
@@ -524,7 +591,7 @@ def upload_model_timing(data_rows):
   global password
 
   # Get init hour from the data
-  gfc_init = data_rows[1][5]
+  gfs_init = data_rows[1][5]
   # Read existing timestamp from last timestamp file
   try:
     f = open(ts_file,"r+")
@@ -539,14 +606,14 @@ def upload_model_timing(data_rows):
 
   model_complete = datetime.datetime.fromtimestamp(last_ts).strftime('%Y-%m-%d %H:%M')
   graphs_complete = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-  #print "GFC: "+str(gfc_init)+", MODEL: "+str(model_complete)+", GRAPHS: "+str(graphs_complete) 
+  #print "GFS: "+str(gfs_init)+", MODEL: "+str(model_complete)+", GRAPHS: "+str(graphs_complete) 
 
   conn_string = "host='"+host+"' dbname='"+dbname+"' user='"+user+"' password='"+password+"'"
   try:
     conn = psycopg2.connect(conn_string)
     curs = conn.cursor()
     
-    data = (str(gfc_init), str(model_complete), str(graphs_complete))
+    data = (str(gfs_init), str(model_complete), str(graphs_complete))
     sql = "INSERT INTO model_timing VALUES (to_timestamp(%s,'YYYY-MM-DD HH24:MI'), "
     sql += "to_timestamp(%s,'YYYY-MM-DD HH24:MI'), to_timestamp(%s,'YYYY-MM-DD HH24:MI'))"
     curs.execute(sql, data)
@@ -567,11 +634,13 @@ def copy_to_archive(datadir):
   global web_archive
   global data_path
   global rain_path
+  global img_path
 
   destdatadir   = os.path.join(web_archive,'forecast',datadir)
   srcdatadir    = os.path.join(data_path, datadir)  
   destraindir   = os.path.join(web_archive,'rainfall')
   srcraindir    = rain_path
+  srcimgdir     = img_path
 
   try:
     shutil.copytree(srcdatadir, destdatadir)
@@ -582,12 +651,22 @@ def copy_to_archive(datadir):
   try:
     for root, dirs, fnames in os.walk(srcraindir):
         for f in fnames:
-            shutil.move(os.path.join(srcraindir,f), destraindir)
+            shutil.copy(os.path.join(srcraindir,f), destraindir)
             logging.info("Rain file %s copied to: %s" % (f,destraindir))
+            os.unlink(os.path.join(srcraindir,f))
 
   except (IOError, os.error) as e:
     logging.error("Error %s", str(e)+" from: "+srcraindir+" to: "+destraindir)
 
+  try:
+    for root, dirs, fnames in os.walk(srcimgdir):
+        for f in fnames:
+            shutil.copy(os.path.join(srcimgdir,f), destraindir)
+            logging.info("Rain image %s copied to: %s" % (f,destraindir))
+            os.unlink(os.path.join(srcimgdir,f))
+
+  except (IOError, os.error) as e:
+    logging.error("Error %s", str(e)+" from: "+srcimgdir+" to: "+destraindir)
 
 
 def main():
@@ -616,6 +695,13 @@ def main():
       copy_to_archive(datadir)
 #      send_alerts()
 
+  precip_dir = get_latest_precipdir()
+  if precip_dir is None:
+      exit
+  else:
+    cnt = parse_precip_data(precip_dir)
+    logging.info("Found %s precipitation data files" % (cnt,))
+
   logging.info("*** Hydrograph Process completed ***")
   # end of main()
 
@@ -638,10 +724,12 @@ if __name__ == "__main__":
   hr_col = config.getint("General", "hr_col")
   data_path = config.get("General", "data_path")
   rain_path = config.get("General", "rain_path")
+  img_path = config.get("General", "img_path")
   disch_col = config.getint("General", "disch_col")
   dt_str_col = config.getint("General", "dt_str_col")
   ts_file = config.get("General", "timestamp_file")
   data_file = config.get("General", "disch_data_file")
+  precip_file = config.get("General", "precip_data_file")
   log_file = config.get("General", "logfile")
   out_path = config.get("Graphs","out_path")
   out_pref = config.get("Graphs", "out_pref")
