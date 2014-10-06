@@ -441,6 +441,33 @@ def parse_precip_data(new_precip_dir):
     return cnt
 
 
+def create_precip_images(csvdir):
+	"""
+	Run a GRASS session to read all precipiation text files, create rasters
+	overlay with certain vectors and export to png files. 
+	Then call imagemagick to make an animated gif
+	"""
+	import grass.script as grass
+	import grass.script.setup as gsetup
+	# define GRASS DATABASE
+	gisdb = os.path.join(os.path.expanduser("~"), "grass")
+	os.environ['GISDBASE'] = gisdb
+	# specify (existing) location and mapset
+	location = "WGS84"
+	mapset   = "precip"
+	# Set GISBASE environment variable
+	os.environ['GISBASE'] = "/usr/lib64/grass-6.4.2"
+	os.environ['PATH'] += os.pathsep + os.path.join(gisbase, 'extrabin')
+	gpydir = os.path.join(gisbase, "etc", "python")
+	sys.path.append(gpydir)
+ 
+	# launch session
+	gsetup.init(gisbase, gisdb, location, mapset)
+
+
+	return cnt
+
+
 
 def get_latest_datadir():
   """
