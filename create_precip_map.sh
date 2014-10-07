@@ -41,7 +41,7 @@ for f in $inputdir/precip*.txt; do
 	precip_rast=`basename ${f} .txt`
 	r.in.xyz --quiet --overwrite input=${f} output=$precip_rast fs=, method=mean
 	r.null $precip_rast setnull=0
-	r.colors --quiet $precip_rast rules=precip_color_rules
+	r.colors --quiet $precip_rast rules=/home/ihs/precip_colors
 	export GRASS_PNGFILE=${outputdir}/${precip_rast}.png
 	d.mon --quiet start=PNG
 	# Add layers
